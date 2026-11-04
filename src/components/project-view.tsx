@@ -151,7 +151,9 @@ export function ProjectView({ projectId }: { projectId: string }) {
           <div className="asset-list">
             {view.entries.map((entry, index) => (
               <section key={entry.id} className="asset-section" aria-labelledby={`palette-${entry.id}`}>
-                <h2 id={`palette-${entry.id}`}>{assetHeading("Palette", index, view.entries.length)}</h2>
+                <h2 id={`palette-${entry.id}`}>
+                  {entry.name || assetHeading("Palette", index, view.entries.length)}
+                </h2>
                 <span className="combo-dots" aria-hidden="true">
                   {entry.colors.map((hex, colorIndex) => (
                     <span key={`${hex}-${colorIndex}`} className="combo-dot" style={{ backgroundColor: hex }} />

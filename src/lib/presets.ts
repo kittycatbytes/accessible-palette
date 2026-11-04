@@ -1,3 +1,4 @@
+import { oklchToHex } from "./color";
 import { optimizeBrand } from "./optimize";
 import type { BrandColor } from "./types";
 
@@ -5,9 +6,39 @@ export type PalettePreset = {
   id: string;
   name: string;
   description: string;
-  group: "popular" | "contemporary" | "classic";
+  group: "popular" | "contemporary" | "classic" | "light" | "vibrant" | "monochromatic" | "pastel" | "contrast";
   colors: string[];
 };
+
+function lightSeeds(hues: number[]): string[] {
+  return hues.map((hue) => oklchToHex(0.82, 0.08, hue));
+}
+
+function pastelSeeds(hues: number[]): string[] {
+  return hues.map((hue) => oklchToHex(0.86, 0.12, hue));
+}
+
+function vividSeeds(shift: number): string[] {
+  return [12, 200, 130, 280, 45].map((hue, index) =>
+    oklchToHex(index % 2 === 0 ? 0.62 : 0.28, index % 2 === 0 ? 0.19 : 0.12, (hue + shift) % 360),
+  );
+}
+
+function monoSeeds(hue: number): string[] {
+  return [0.24, 0.36, 0.46, 0.55].map((lightness) => oklchToHex(lightness, 0.12, hue));
+}
+
+function contrastSeeds(shift: number): string[] {
+  return [210, 30, 150, 90, 330].map((hue, index) =>
+    oklchToHex(index % 2 === 0 ? 0.3 : 0.58, index % 2 === 0 ? 0.1 : 0.17, (hue + shift) % 360),
+  );
+}
+
+export function presetBias(group: PalettePreset["group"]): "standard" | "light" | "steps" {
+  if (group === "light" || group === "pastel") return "light";
+  if (group === "monochromatic") return "steps";
+  return "standard";
+}
 
 type Seed = Omit<PalettePreset, "colors"> & { seeds: string[] };
 
@@ -180,6 +211,286 @@ const SEEDS: Seed[] = [
     group: "classic",
     seeds: ["#1a3f8c", "#0e5c4a", "#8a5a16", "#6e2438", "#3a2e24"],
   },
+  {
+    id: "linen",
+    name: "Linen",
+    description: "Clay, olive, sage, and periwinkle, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([40, 95, 155, 215, 285]),
+  },
+  {
+    id: "porcelain",
+    name: "Porcelain",
+    description: "Rose, teal, blue, and straw, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([25, 200, 255, 325, 75]),
+  },
+  {
+    id: "petal",
+    name: "Petal",
+    description: "Coral, rose, leaf, and apricot, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([12, 345, 145, 265, 55]),
+  },
+  {
+    id: "coast",
+    name: "Coast",
+    description: "Lagoon, wheat, blue, and shell, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([190, 155, 70, 235, 28]),
+  },
+  {
+    id: "meadow",
+    name: "Meadow",
+    description: "Grass, wheat, and cornflower, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([125, 95, 58, 225, 168]),
+  },
+  {
+    id: "dawn",
+    name: "Dawn",
+    description: "Apricot, pink, teal, and violet, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([42, 18, 335, 195, 275]),
+  },
+  {
+    id: "sheer",
+    name: "Sheer",
+    description: "Sky, aqua, orchid, and sand, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([230, 175, 205, 305, 85]),
+  },
+  {
+    id: "cirrus",
+    name: "Cirrus",
+    description: "Slate, sage, clay, and lilac, kept as light as AA allows.",
+    group: "light",
+    seeds: lightSeeds([248, 160, 38, 312, 188]),
+  },
+  {
+    id: "flare",
+    name: "Flare",
+    description: "Saturated red, teal, and gold with dark intervals.",
+    group: "vibrant",
+    seeds: vividSeeds(0),
+  },
+  {
+    id: "carnival",
+    name: "Carnival",
+    description: "Hot hues spaced so each neighbor clears UI contrast.",
+    group: "vibrant",
+    seeds: vividSeeds(18),
+  },
+  {
+    id: "marquee",
+    name: "Marquee",
+    description: "Poster red, violet, and leaf with deep rests.",
+    group: "vibrant",
+    seeds: vividSeeds(36),
+  },
+  {
+    id: "arcade",
+    name: "Arcade",
+    description: "Bright steps against near-black of the next hue.",
+    group: "vibrant",
+    seeds: vividSeeds(54),
+  },
+  {
+    id: "fiesta",
+    name: "Fiesta",
+    description: "Orange, magenta, and lime held apart in lightness.",
+    group: "vibrant",
+    seeds: vividSeeds(72),
+  },
+  {
+    id: "spotlight",
+    name: "Spotlight",
+    description: "Stage color with a dark color between each bright one.",
+    group: "vibrant",
+    seeds: vividSeeds(96),
+  },
+  {
+    id: "neon-ink",
+    name: "Neon ink",
+    description: "High-chroma hues that still take white text.",
+    group: "vibrant",
+    seeds: vividSeeds(120),
+  },
+  {
+    id: "electric",
+    name: "Electric",
+    description: "Blue, chartreuse, and rose with dark separators.",
+    group: "vibrant",
+    seeds: vividSeeds(150),
+  },
+  {
+    id: "indigo-wash",
+    name: "Indigo wash",
+    description: "Four indigo steps, each able to hold white text.",
+    group: "monochromatic",
+    seeds: monoSeeds(258),
+  },
+  {
+    id: "marine",
+    name: "Marine",
+    description: "One blue, from deep water to a lighter step.",
+    group: "monochromatic",
+    seeds: monoSeeds(230),
+  },
+  {
+    id: "moss",
+    name: "Moss",
+    description: "One green, stepped only in lightness.",
+    group: "monochromatic",
+    seeds: monoSeeds(145),
+  },
+  {
+    id: "brick",
+    name: "Brick",
+    description: "One red-brown, dark through mid.",
+    group: "monochromatic",
+    seeds: monoSeeds(28),
+  },
+  {
+    id: "wine",
+    name: "Wine",
+    description: "One crimson, kept in a single hue.",
+    group: "monochromatic",
+    seeds: monoSeeds(15),
+  },
+  {
+    id: "violet-steps",
+    name: "Violet steps",
+    description: "One violet, four depths.",
+    group: "monochromatic",
+    seeds: monoSeeds(300),
+  },
+  {
+    id: "olive-steps",
+    name: "Olive steps",
+    description: "One olive, dark to the lightest step that still takes white.",
+    group: "monochromatic",
+    seeds: monoSeeds(105),
+  },
+  {
+    id: "lagoon-steps",
+    name: "Lagoon steps",
+    description: "One teal, stepped in lightness only.",
+    group: "monochromatic",
+    seeds: monoSeeds(190),
+  },
+  {
+    id: "sorbet",
+    name: "Sorbet",
+    description: "Peach, mint, and lilac, as light as white text allows.",
+    group: "pastel",
+    seeds: pastelSeeds([25, 155, 200, 300, 70]),
+  },
+  {
+    id: "macaron",
+    name: "Macaron",
+    description: "Rose, pistachio, and lemon, kept light enough to pass AA.",
+    group: "pastel",
+    seeds: pastelSeeds([350, 140, 85, 250, 20]),
+  },
+  {
+    id: "powder",
+    name: "Powder",
+    description: "Sky, blush, and sage at the lightest passing step.",
+    group: "pastel",
+    seeds: pastelSeeds([230, 10, 130, 280, 50]),
+  },
+  {
+    id: "confetti",
+    name: "Confetti",
+    description: "Soft primary hues, lightened until white text still passes.",
+    group: "pastel",
+    seeds: pastelSeeds([210, 110, 330, 160, 40]),
+  },
+  {
+    id: "pearl",
+    name: "Pearl",
+    description: "Cool pastels held at the AA edge for white text.",
+    group: "pastel",
+    seeds: pastelSeeds([200, 260, 170, 310, 60]),
+  },
+  {
+    id: "nectar",
+    name: "Nectar",
+    description: "Apricot, berry, and leaf, no darker than AA needs.",
+    group: "pastel",
+    seeds: pastelSeeds([45, 345, 125, 220, 290]),
+  },
+  {
+    id: "lilac-mist",
+    name: "Lilac mist",
+    description: "Violet, rose, and aqua pastels.",
+    group: "pastel",
+    seeds: pastelSeeds([285, 340, 185, 95, 240]),
+  },
+  {
+    id: "buttercream",
+    name: "Buttercream",
+    description: "Warm pastels: cream, coral, and pale green.",
+    group: "pastel",
+    seeds: pastelSeeds([75, 30, 150, 5, 200]),
+  },
+  {
+    id: "beacon",
+    name: "Beacon",
+    description: "Light and dark alternate so every neighbor clears 3:1.",
+    group: "contrast",
+    seeds: contrastSeeds(0),
+  },
+  {
+    id: "stamp",
+    name: "Stamp",
+    description: "A light color, then a dark one, through five hues.",
+    group: "contrast",
+    seeds: contrastSeeds(24),
+  },
+  {
+    id: "poster",
+    name: "Poster",
+    description: "High lightness jumps between neighboring colors.",
+    group: "contrast",
+    seeds: contrastSeeds(48),
+  },
+  {
+    id: "signal-flag",
+    name: "Signal flag",
+    description: "Dark, light, dark, so adjacent colors separate.",
+    group: "contrast",
+    seeds: contrastSeeds(72),
+  },
+  {
+    id: "block",
+    name: "Block",
+    description: "Broad light and dark blocks across the wheel.",
+    group: "contrast",
+    seeds: contrastSeeds(100),
+  },
+  {
+    id: "billboard",
+    name: "Billboard",
+    description: "Each color is far in lightness from the next.",
+    group: "contrast",
+    seeds: contrastSeeds(130),
+  },
+  {
+    id: "hazard",
+    name: "Hazard",
+    description: "Warning-bright colors set against deep ones.",
+    group: "contrast",
+    seeds: contrastSeeds(160),
+  },
+  {
+    id: "keyline",
+    name: "Keyline",
+    description: "Alternating depth so the pairs read at a glance.",
+    group: "contrast",
+    seeds: contrastSeeds(200),
+  },
 ];
 
 function asBrand(hexes: string[]): BrandColor[] {
@@ -195,7 +506,7 @@ export const PRESETS: PalettePreset[] = SEEDS.map((seed) => ({
   name: seed.name,
   description: seed.description,
   group: seed.group,
-  colors: optimizeBrand(asBrand(seed.seeds), null).colors.map((color) => color.hex),
+  colors: optimizeBrand(asBrand(seed.seeds), null, presetBias(seed.group)).colors.map((color) => color.hex),
 }));
 
 export const POPULAR_PRESETS = PRESETS.filter((preset) => preset.group === "popular");
@@ -203,3 +514,8 @@ export const CONTEMPORARY_PRESETS = PRESETS.filter(
   (preset) => preset.group === "contemporary",
 );
 export const CLASSIC_PRESETS = PRESETS.filter((preset) => preset.group === "classic");
+export const LIGHT_PRESETS = PRESETS.filter((preset) => preset.group === "light");
+export const VIBRANT_PRESETS = PRESETS.filter((preset) => preset.group === "vibrant");
+export const MONOCHROMATIC_PRESETS = PRESETS.filter((preset) => preset.group === "monochromatic");
+export const PASTEL_PRESETS = PRESETS.filter((preset) => preset.group === "pastel");
+export const CONTRAST_PRESETS = PRESETS.filter((preset) => preset.group === "contrast");

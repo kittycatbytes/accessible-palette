@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrastRatio, formatRatio, hsbFromField, hueFromStrip, normalizeHex, verdict } from "./color";
+import { contrastRatio, formatRatio, hsbFromField, hueFromStrip, normalizeHex, readOklch, verdict } from "./color";
 import { simulateCvd } from "./cvd";
 import { aseBytes, buildExports } from "./export";
 import { colorsFromHarmony, paletteFromHarmony } from "./harmony";
@@ -93,6 +93,35 @@ describe("palettes", () => {
     expect(PRESETS.filter((preset) => preset.group === "popular")).toHaveLength(8);
     expect(PRESETS.filter((preset) => preset.group === "contemporary")).toHaveLength(8);
     expect(PRESETS.filter((preset) => preset.group === "classic")).toHaveLength(8);
+    expect(PRESETS.filter((preset) => preset.group === "light")).toHaveLength(8);
+    expect(PRESETS.filter((preset) => preset.group === "vibrant")).toHaveLength(8);
+    expect(PRESETS.filter((preset) => preset.group === "monochromatic")).toHaveLength(8);
+    expect(PRESETS.filter((preset) => preset.group === "pastel")).toHaveLength(8);
+    expect(PRESETS.filter((preset) => preset.group === "contrast")).toHaveLength(8);
+    const mean = (group: string) => {
+      const colors = PRESETS.filter((preset) => preset.group === group).flatMap((preset) => preset.colors);
+      return colors.reduce((sum, hex) => sum + readOklch(hex).l, 0) / colors.length;
+    };
+    const meanChroma = (group: string) => {
+      const colors = PRESETS.filter((preset) => preset.group === group).flatMap((preset) => preset.colors);
+      return colors.reduce((sum, hex) => sum + readOklch(hex).c, 0) / colors.length;
+    };
+    expect(mean("light")).toBeGreaterThan(mean("popular") + 0.2);
+    expect(mean("pastel")).toBeGreaterThan(mean("popular") + 0.15);
+    expect(meanChroma("vibrant")).toBeGreaterThan(meanChroma("popular"));
+    for (const preset of PRESETS.filter((item) => item.group === "monochromatic")) {
+      const hues = preset.colors.map((hex) => readOklch(hex).h);
+      const span = Math.max(...hues) - Math.min(...hues);
+      expect(span, preset.name).toBeLessThan(20);
+    }
+    for (const preset of PRESETS.filter((item) => item.group === "vibrant" || item.group === "contrast")) {
+      for (let index = 0; index < preset.colors.length - 1; index += 1) {
+        expect(
+          contrastRatio(preset.colors[index], preset.colors[index + 1]),
+          `${preset.name} ${index}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
     for (const preset of PRESETS) {
       expect(preset.colors.length).toBeGreaterThanOrEqual(3);
       expect(preset.colors.length).toBeLessThanOrEqual(5);
@@ -128,6 +157,33 @@ describe("theme", () => {
         expect(pair.aaNormal, `${pair.view} ${pair.purpose} ${pair.ratio}`).toBe(true);
       } else {
         expect(pair.nonText, `${pair.view} ${pair.purpose} ${pair.ratio}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("status colors", () => {
+  it("keeps clearer notice colors inside the same contrast bars", () => {
+    for (const preset of PRESETS) {
+      const snapshot = buildSnapshot({
+        brandColors: brand(preset.colors),
+        autoOptimize: false,
+        pickerMode: "hex",
+        harmony: "analogous",
+      });
+      for (const mode of ["light", "dark"] as const) {
+        const tokens = snapshot[mode].tokens;
+        for (const role of ["success", "warning", "danger"] as const) {
+          const fill = tokens[role];
+          const text = tokens[`${role}Foreground`];
+          expect(contrastRatio(text, fill), `${preset.name} ${mode} ${role} text`).toBeGreaterThanOrEqual(4.5);
+          expect(contrastRatio(fill, tokens.background), `${preset.name} ${mode} ${role} page`).toBeGreaterThanOrEqual(3);
+          expect(readOklch(fill).c, `${preset.name} ${mode} ${role} chroma`).toBeGreaterThan(0.1);
+        }
+        expect(tokens.successForeground).toBe("#000000");
+        expect(tokens.warningForeground).toBe("#000000");
+        if (mode === "dark") expect(tokens.dangerForeground).toBe("#000000");
+        if (mode === "light") expect(tokens.dangerForeground).toBe("#ffffff");
       }
     }
   });

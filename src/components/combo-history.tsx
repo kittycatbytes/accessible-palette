@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   historyRows,
   saveToFavorites,
@@ -13,29 +13,35 @@ import { SaveDialog } from "./save-dialog";
 
 export function ComboHistory({
   colors,
+  paletteName,
   library,
   localOnly,
   onApply,
+  onRename,
   onLibrary,
   onSaved,
 }: {
   colors: string[];
+  paletteName: string;
   library: PaletteLibrary;
   localOnly: boolean;
-  onApply: (colors: string[]) => void;
+  onApply: (colors: string[], name: string) => void;
+  onRename: (colors: string[], name: string) => void;
   onLibrary: (library: PaletteLibrary) => void;
   onSaved: (place: SavedPlace) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
+  const [draftName, setDraftName] = useState("");
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const listId = useId();
-  const rows = historyRows(colors, library.history);
+  const rows = historyRows(colors, library.history, paletteName);
 
-  function openModal(combo: string[], button: HTMLButtonElement) {
+  function openModal(combo: string[], name: string, button: HTMLButtonElement) {
     openerRef.current = button;
     setDraft(combo);
+    setDraftName(name);
     setSaveOpen(true);
   }
 
@@ -75,22 +81,23 @@ export function ComboHistory({
               <button
                 type="button"
                 className="combo-history-apply"
-                onClick={() => onApply(row.colors)}
+                onClick={() => onApply(row.colors, row.name ?? "")}
                 aria-label={
                   index === 0
-                    ? `Current palette, ${row.colors.join(", ")}`
-                    : `Use palette ${row.colors.join(", ")}`
+                    ? `Current palette${row.name ? `, ${row.name}` : ""}, ${row.colors.join(", ")}`
+                    : `Use palette${row.name ? ` ${row.name}` : ""}, ${row.colors.join(", ")}`
                 }
               >
                 <ComboDots colors={row.colors} />
               </button>
+              <PaletteName name={row.name} onCommit={(name) => onRename(row.colors, name)} />
               <button
                 type="button"
                 className="button button-ghost combo-save"
-                onClick={(event) => openModal(row.colors, event.currentTarget)}
+                onClick={(event) => openModal(row.colors, row.name ?? "", event.currentTarget)}
               >
                 <span aria-hidden="true">+</span>
-                Save to Favorites
+                Save
               </button>
             </li>
           ))}
@@ -99,18 +106,20 @@ export function ComboHistory({
       <SaveDialog
         open={saveOpen}
         title="Save to Favorites"
+        paletteName={draftName}
         library={library}
         localOnly={localOnly}
         onDismiss={closeModal}
-        onSubmit={({ destination, projectName, projectId }) => {
+        onSubmit={({ destination, projectName, projectId, paletteName: nextName }) => {
           const result =
             destination === "favorites"
-              ? saveToFavorites(library, draft)
+              ? saveToFavorites(library, draft, nextName)
               : destination === "new"
-                ? saveToNewProject(library, draft, projectName)
-                : saveToProject(library, draft, projectId);
+                ? saveToNewProject(library, draft, projectName, nextName)
+                : saveToProject(library, draft, projectId, nextName);
           if (!result.ok) return result.message;
           onLibrary(result.library);
+          onRename(draft, nextName);
           onSaved(result.place);
           return null;
         }}
@@ -118,6 +127,57 @@ export function ComboHistory({
         <ComboDots colors={draft} />
       </SaveDialog>
     </div>
+  );
+}
+
+function PaletteName({ name, onCommit }: { name?: string; onCommit: (name: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name ?? "");
+  const cancelRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const label = name?.trim() ? name : "Unnamed";
+
+  useEffect(() => {
+    if (!editing) setDraft(name ?? "");
+  }, [editing, name]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="combo-name-input"
+        aria-label="Palette name"
+        value={draft}
+        maxLength={80}
+        placeholder="Unnamed"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const cancel = cancelRef.current;
+          cancelRef.current = false;
+          setEditing(false);
+          if (!cancel) onCommit(draft);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            cancelRef.current = true;
+            setDraft(name ?? "");
+            event.currentTarget.blur();
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button type="button" className={name?.trim() ? "combo-name" : "combo-name is-empty"} onClick={() => setEditing(true)}>
+      {label}
+      <span className="sr-only">. Rename palette.</span>
+    </button>
   );
 }
 

@@ -13,6 +13,7 @@ export function SaveDialog({
   demoAlt,
   library,
   localOnly,
+  paletteName,
   onDismiss,
   onSubmit,
   children,
@@ -24,19 +25,29 @@ export function SaveDialog({
   demoAlt?: string;
   library: PaletteLibrary;
   localOnly: boolean;
+  paletteName?: string;
   onDismiss: () => void;
-  onSubmit: (choice: { destination: SaveDestination; projectName: string; projectId: string }) => string | null;
+  onSubmit: (choice: {
+    destination: SaveDestination;
+    projectName: string;
+    projectId: string;
+    paletteName: string;
+  }) => string | null;
   children?: ReactNode;
 }) {
   const [destination, setDestination] = useState<SaveDestination>("favorites");
   const [projectName, setProjectName] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [assetName, setAssetName] = useState("");
   const [message, setMessage] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const projectsRef = useRef(library.projects);
   const titleId = useId();
   const nameId = useId();
+  const paletteNameId = useId();
   const projectSelectId = useId();
+  const incomingName = useRef(paletteName);
+  incomingName.current = paletteName;
   const radioName = useId();
   projectsRef.current = library.projects;
 
@@ -45,6 +56,7 @@ export function SaveDialog({
     setDestination("favorites");
     setProjectName("");
     setProjectId(projectsRef.current[0]?.id ?? "");
+    setAssetName(incomingName.current ?? "");
     setMessage("");
   }, [open]);
 
@@ -62,7 +74,7 @@ export function SaveDialog({
 
   function save(event: FormEvent) {
     event.preventDefault();
-    const error = onSubmit({ destination, projectName, projectId });
+    const error = onSubmit({ destination, projectName, projectId, paletteName: assetName });
     if (error) {
       setMessage(error);
       return;
@@ -84,6 +96,18 @@ export function SaveDialog({
           <img className="modal-demo" src={demoSrc} alt={demoAlt ?? ""} width={1180} height={820} />
         ) : null}
         {children}
+        {paletteName !== undefined ? (
+          <div className="field">
+            <label htmlFor={paletteNameId}>Palette name</label>
+            <input
+              id={paletteNameId}
+              value={assetName}
+              maxLength={80}
+              placeholder="Unnamed"
+              onChange={(event) => setAssetName(event.target.value)}
+            />
+          </div>
+        ) : null}
         <fieldset>
           <legend>Where should this palette go?</legend>
           <label className="check">

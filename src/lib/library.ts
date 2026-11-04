@@ -1,6 +1,7 @@
 export type ColorCombo = {
   id: string;
   colors: string[];
+  name?: string;
 };
 
 export type MatrixCombo = {
@@ -95,14 +96,23 @@ function readMatrices(value: unknown): SavedMatrix[] | null {
   return matrices as SavedMatrix[];
 }
 
+function cleanName(name: string | undefined): string | undefined {
+  const trimmed = name?.trim().slice(0, 80) ?? "";
+  return trimmed || undefined;
+}
+
+function readName(value: unknown): string | undefined {
+  return typeof value === "string" ? cleanName(value) : undefined;
+}
+
 function readCombo(value: unknown): ColorCombo | null {
   if (!value || typeof value !== "object") return null;
-  const record = value as { id?: unknown; colors?: unknown };
+  const record = value as { id?: unknown; colors?: unknown; name?: unknown };
   if (typeof record.id !== "string" || record.id.length === 0 || record.id.length > 80) return null;
   if (!Array.isArray(record.colors) || record.colors.some((hex) => typeof hex !== "string")) return null;
   const colors = normalizeColors(record.colors as string[]);
   if (!colors) return null;
-  return { id: record.id, colors };
+  return { id: record.id, colors, name: readName(record.name) };
 }
 
 export function parseLibrary(value: unknown): PaletteLibrary | null {
@@ -142,21 +152,39 @@ export function parseLibrary(value: unknown): PaletteLibrary | null {
   };
 }
 
-export function pushHistory(library: PaletteLibrary, colors: string[]): PaletteLibrary {
+export function pushHistory(library: PaletteLibrary, colors: string[], name?: string): PaletteLibrary {
   const normalized = normalizeColors(colors);
   if (!normalized) return library;
-  if (library.history[0] && sameCombo(library.history[0].colors, normalized)) return library;
+  const stored = cleanName(name);
+  if (library.history[0] && sameCombo(library.history[0].colors, normalized)) {
+    if (stored === library.history[0].name) return library;
+    const [first, ...rest] = library.history;
+    return { ...library, history: [{ ...first, name: stored }, ...rest] };
+  }
   return {
     ...library,
-    history: [{ id: crypto.randomUUID(), colors: normalized }, ...library.history].slice(0, 12),
+    history: [{ id: crypto.randomUUID(), colors: normalized, name: stored }, ...library.history].slice(0, 12),
+  };
+}
+
+export function renameHistory(library: PaletteLibrary, colors: string[], name: string): PaletteLibrary {
+  const normalized = normalizeColors(colors);
+  if (!normalized) return library;
+  const stored = cleanName(name);
+  const match = library.history.some((item) => sameCombo(item.colors, normalized));
+  if (!match) return pushHistory(library, normalized, stored);
+  return {
+    ...library,
+    history: library.history.map((item) => (sameCombo(item.colors, normalized) ? { ...item, name: stored } : item)),
   };
 }
 
 /** Current combo first, then up to four earlier combos. */
-export function historyRows(current: string[], history: ColorCombo[]): ColorCombo[] {
+export function historyRows(current: string[], history: ColorCombo[], currentName = ""): ColorCombo[] {
   const normalized = normalizeColors(current) ?? current.map((hex) => hex.toLowerCase());
+  const match = history.find((item) => sameCombo(item.colors, normalized));
   const previous = history.filter((item) => !sameCombo(item.colors, normalized)).slice(0, 4);
-  return [{ id: "current", colors: normalized }, ...previous];
+  return [{ id: "current", colors: normalized, name: cleanName(currentName) ?? match?.name }, ...previous];
 }
 
 export type SavedPlace = {
@@ -175,20 +203,20 @@ function projectPlace(project: { id: string; name: string }) {
   return { name: project.name, href: `/projects/${project.id}` };
 }
 
-function addEntry(entries: ColorCombo[], colors: string[]): ColorCombo[] | null {
+function addEntry(entries: ColorCombo[], colors: string[], name?: string): ColorCombo[] | null {
   const normalized = normalizeColors(colors);
   if (!normalized) return null;
   if (entries.some((entry) => sameCombo(entry.colors, normalized))) return null;
-  return [{ id: crypto.randomUUID(), colors: normalized }, ...entries].slice(0, 100);
+  return [{ id: crypto.randomUUID(), colors: normalized, name: cleanName(name) }, ...entries].slice(0, 100);
 }
 
-export function saveToFavorites(library: PaletteLibrary, colors: string[]): SaveResult {
-  const entries = addEntry(library.favorites, colors);
+export function saveToFavorites(library: PaletteLibrary, colors: string[], name?: string): SaveResult {
+  const entries = addEntry(library.favorites, colors, name);
   if (!entries) return { ok: false, message: "That palette is already in Favorites." };
   return { ok: true, library: { ...library, favorites: entries }, place: { ...FAVORITES_PLACE, kind: "palette" } };
 }
 
-export function saveToNewProject(library: PaletteLibrary, colors: string[], name: string): SaveResult {
+export function saveToNewProject(library: PaletteLibrary, colors: string[], name: string, paletteName?: string): SaveResult {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, message: "Name the project before saving." };
   if (trimmed.length > 80) return { ok: false, message: "Use a project name of 80 characters or fewer." };
@@ -200,7 +228,7 @@ export function saveToNewProject(library: PaletteLibrary, colors: string[], name
   const project: PaletteProject = {
     id: crypto.randomUUID(),
     name: trimmed,
-    entries: [{ id: crypto.randomUUID(), colors: normalized }],
+    entries: [{ id: crypto.randomUUID(), colors: normalized, name: cleanName(paletteName) }],
     matrices: [],
   };
   return {
@@ -300,10 +328,10 @@ export function saveMatrixToProject(
   };
 }
 
-export function saveToProject(library: PaletteLibrary, colors: string[], projectId: string): SaveResult {
+export function saveToProject(library: PaletteLibrary, colors: string[], projectId: string, paletteName?: string): SaveResult {
   const index = library.projects.findIndex((project) => project.id === projectId);
   if (index < 0) return { ok: false, message: "Choose a project." };
-  const entries = addEntry(library.projects[index].entries, colors);
+  const entries = addEntry(library.projects[index].entries, colors, paletteName);
   if (!entries) return { ok: false, message: "That palette is already in this project." };
   const projects = library.projects.map((project, item) =>
     item === index ? { ...project, entries } : project,

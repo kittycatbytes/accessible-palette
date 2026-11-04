@@ -143,17 +143,51 @@ function statusFill(hue: number, page: string, mode: "light" | "dark"): {
   fill: string;
   text: string;
 } {
-  const levels =
+  const family = hue >= 110 ? "green" : hue >= 45 ? "amber" : "red";
+  const goal =
     mode === "light"
-      ? Array.from({ length: 16 }, (_, index) => 0.48 - index * 0.02)
-      : Array.from({ length: 16 }, (_, index) => 0.55 + index * 0.02);
-  for (const lightness of levels) {
-    const hex = oklchToHex(lightness, mode === "light" ? 0.13 : 0.11, hue);
-    const text = bestText(hex);
-    if (contrastRatio(text, hex) >= 4.5 && contrastRatio(hex, page) >= 3) {
-      return { fill: hex, text };
+      ? family === "green"
+        ? { lightness: 0.57, text: "#000000" as const, chroma: 0.16 }
+        : family === "amber"
+          ? { lightness: 0.66, text: "#000000" as const, chroma: 0.14 }
+          : { lightness: 0.52, text: "#ffffff" as const, chroma: 0.18 }
+      : family === "green"
+        ? { lightness: 0.74, text: "#000000" as const, chroma: 0.16 }
+        : family === "amber"
+          ? { lightness: 0.78, text: "#000000" as const, chroma: 0.15 }
+          : { lightness: 0.68, text: "#000000" as const, chroma: 0.17 };
+
+  const found: { fill: string; text: string; score: number; pageRatio: number }[] = [];
+  for (let hueShift = -8; hueShift <= 8; hueShift += 4) {
+    for (let chroma = 0.1; chroma <= 0.2; chroma += 0.02) {
+      for (let lightness = 0.4; lightness <= 0.84; lightness += 0.02) {
+        const fill = oklchToHex(lightness, chroma, hue + hueShift);
+        const actual = readOklch(fill);
+        for (const text of ["#000000", "#ffffff"] as const) {
+          const textRatio = contrastRatio(text, fill);
+          const pageRatio = contrastRatio(fill, page);
+          if (textRatio < 4.5 || pageRatio < 3) continue;
+          const chromaScore =
+            Math.min(actual.c, goal.chroma) * 16 -
+            Math.max(0, actual.c - goal.chroma - 0.02) * 8;
+          const score =
+            chromaScore +
+            Math.min(Math.max(0, pageRatio - 3), 0.8) * 0.9 +
+            Math.min(textRatio - 4.5, 3) * 0.2 +
+            (text === goal.text ? 2.2 : 0) -
+            Math.abs(actual.l - goal.lightness) * 5 -
+            Math.abs(hueShift) * 0.05;
+          found.push({ fill, text, score, pageRatio });
+        }
+      }
     }
   }
+
+  const roomy = found.filter((item) => item.pageRatio >= 3.2);
+  const pool = roomy.length > 0 ? roomy : found;
+  pool.sort((a, b) => b.score - a.score);
+  if (pool[0]) return { fill: pool[0].fill, text: pool[0].text };
+
   const fill = oklchToHex(mode === "light" ? 0.32 : 0.78, 0.1, hue);
   return { fill, text: bestText(fill) };
 }

@@ -9,21 +9,32 @@ import {
   LIBRARY_STORAGE_KEY,
   parseLibrary,
   pushHistory,
+  renameHistory,
+  sameCombo,
   type PaletteLibrary,
   type SavedPlace,
 } from "@/lib/library";
 import { colorsFromHarmony, paletteFromHarmony } from "@/lib/harmony";
 import { optimizeBrand } from "@/lib/optimize";
-import { CLASSIC_PRESETS, CONTEMPORARY_PRESETS, POPULAR_PRESETS, type PalettePreset } from "@/lib/presets";
+import {
+  CLASSIC_PRESETS,
+  CONTRAST_PRESETS,
+  CONTEMPORARY_PRESETS,
+  LIGHT_PRESETS,
+  MONOCHROMATIC_PRESETS,
+  PASTEL_PRESETS,
+  POPULAR_PRESETS,
+  VIBRANT_PRESETS,
+  presetBias,
+  type PalettePreset,
+} from "@/lib/presets";
 import { buildSnapshot, listPairs } from "@/lib/snapshot";
 import type { BrandColor, ContrastPair, Harmony, PickerMode } from "@/lib/types";
-import { Badges } from "./badges";
 import { ColorPicker } from "./color-picker";
 import { CvdPanel } from "./cvd-panel";
 import { ExportPanel } from "./export-panel";
-import { Flyout } from "./flyout";
+import { CategoryRail } from "./flyout";
 import { ComboHistory } from "./combo-history";
-import { HistoryPanel, type SavedPalette, type SavedVersion } from "./history-panel";
 import { Matrix } from "./matrix";
 import { PaletteStage } from "./palette-stage";
 import { Preview } from "./preview";
@@ -80,7 +91,7 @@ export function Workspace() {
     view: ContrastPair["view"];
     fgKey: string;
     bgKey: string;
-  }>({ view: "brand", fgKey: "white", bgKey: "c1" });
+  } | null>(null);
   const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "light" as const);
   const router = useRouter();
   const [session, setSession] = useState<SessionInfo | null>(null);
@@ -88,11 +99,7 @@ export function Workspace() {
   const [library, setLibrary] = useState<PaletteLibrary>(EMPTY_LIBRARY);
   const [libraryReady, setLibraryReady] = useState(false);
   const [toast, setToast] = useState<{ id: number; place: SavedPlace } | null>(null);
-  const [palettes, setPalettes] = useState<SavedPalette[]>([]);
-  const [paletteId, setPaletteId] = useState<string | undefined>();
   const [paletteName, setPaletteName] = useState("Harbor");
-  const [versionName, setVersionName] = useState("First pass");
-  const [busy, setBusy] = useState(false);
   const colorsRef = useRef(colors);
   const spareRef = useRef<BrandColor[]>([]);
   const gesture = useRef(false);
@@ -114,8 +121,12 @@ export function Workspace() {
   );
   const localPairs = useMemo(() => listPairs(snapshot), [snapshot]);
   const pairs = serverPairs ?? localPairs;
+  const chosenPair = active
+    ? pairs.find((pair) => pair.view === active.view && pair.fgKey === active.fgKey && pair.bgKey === active.bgKey)
+    : undefined;
   const activePair =
-    pairs.find((pair) => pair.view === active.view && pair.fgKey === active.fgKey && pair.bgKey === active.bgKey) ??
+    chosenPair ??
+    pairs.find((pair) => pair.view === "brand" && pair.required && !pair.exempt && pair.aaNormal && pair.nonText) ??
     pairs.find((pair) => pair.required) ??
     pairs[0];
 
@@ -126,7 +137,6 @@ export function Workspace() {
       .then((data: SessionInfo) => {
         if (cancelled) return;
         setSession(data);
-        if (data.user) refreshPalettes();
       })
       .catch(() => {
         if (!cancelled) setSession(null);
@@ -167,10 +177,11 @@ export function Workspace() {
         const numbered = renumber(fromHexes(next.history[0].colors));
         colorsRef.current = numbered;
         setColors(numbered);
+        setPaletteName(next.history[0].name ?? "");
       }
       const seeded =
         !touched.current && next.history.length === 0
-          ? pushHistory(next, colorsRef.current.map((color) => color.hex))
+          ? pushHistory(next, colorsRef.current.map((color) => color.hex), "Harbor")
           : next;
       setLibrary((current) => {
         if (!touched.current) return seeded;
@@ -249,15 +260,6 @@ export function Workspace() {
     };
   }, [colors, autoOptimize, pickerMode, harmony]);
 
-  function refreshPalettes() {
-    fetch("/api/palettes")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (data?.palettes) setPalettes(data.palettes);
-      })
-      .catch(() => undefined);
-  }
-
   function acceptLibrary(next: PaletteLibrary) {
     touched.current = true;
     try {
@@ -269,12 +271,13 @@ export function Workspace() {
   }
 
   function remember() {
-    setPast((previous) => [...previous, colorsRef.current].slice(-30));
+    const snapshot = colorsRef.current.map((color) => ({ ...color }));
+    setPast((previous) => [...previous, snapshot].slice(-30));
     setFuture([]);
   }
 
-  function recordHistory(next: BrandColor[]) {
-    setLibrary((current) => pushHistory(current, next.map((color) => color.hex)));
+  function recordHistory(next: BrandColor[], name = paletteName) {
+    setLibrary((current) => pushHistory(current, next.map((color) => color.hex), name));
   }
 
   function finishGesture() {
@@ -283,11 +286,15 @@ export function Workspace() {
     recordHistory(colorsRef.current);
   }
 
-  function commit(next: BrandColor[], source: "edit" | "preset" | "auto" | "restore" | "count") {
+  function commit(
+    next: BrandColor[],
+    source: "edit" | "preset" | "auto" | "restore" | "count",
+    name = paletteName,
+  ) {
     touched.current = true;
     if (!gesture.current) {
       remember();
-      recordHistory(next);
+      recordHistory(next, name);
     }
     const numbered = renumber(next);
     colorsRef.current = numbered;
@@ -335,11 +342,12 @@ export function Workspace() {
     spareRef.current = [];
     setSelected(0);
     setPaletteName(preset.name);
-    setPaletteId(undefined);
     const next = fromHexes(preset.colors);
-    const result = autoOptimize ? optimizeBrand(next, null) : { colors: next, notes: [] };
+    const result = autoOptimize
+      ? optimizeBrand(next, null, presetBias(preset.group))
+      : { colors: next, notes: [] };
     setNotes(result.notes);
-    commit(result.colors, "preset");
+    commit(result.colors, "preset", preset.name);
     setStatus(`${preset.name} is on the circle.`);
   }
 
@@ -368,78 +376,31 @@ export function Workspace() {
   }
 
   function undo() {
-    setPast((previous) => {
-      const last = previous[previous.length - 1];
-      if (!last) return previous;
-      setFuture((upcoming) => [colorsRef.current, ...upcoming].slice(0, 30));
-      colorsRef.current = last;
-      setColors(last);
-      touched.current = true;
-      recordHistory(last);
-      return previous.slice(0, -1);
-    });
+    const last = past[past.length - 1];
+    if (!last) return;
+    const current = colorsRef.current.map((color) => ({ ...color }));
+    setFuture((upcoming) => [current, ...upcoming].slice(0, 30));
+    setPast((previous) => previous.slice(0, -1));
+    colorsRef.current = last;
+    setColors(last);
+    touched.current = true;
+    recordHistory(last);
   }
 
   function redo() {
-    setFuture((upcoming) => {
-      const next = upcoming[0];
-      if (!next) return upcoming;
-      setPast((previous) => [...previous, colorsRef.current].slice(-30));
-      colorsRef.current = next;
-      setColors(next);
-      touched.current = true;
-      recordHistory(next);
-      return upcoming.slice(1);
-    });
+    const next = future[0];
+    if (!next) return;
+    const current = colorsRef.current.map((color) => ({ ...color }));
+    setPast((previous) => [...previous, current].slice(-30));
+    setFuture((upcoming) => upcoming.slice(1));
+    colorsRef.current = next;
+    setColors(next);
+    touched.current = true;
+    recordHistory(next);
   }
 
   function toggleTheme() {
     writeTheme(theme === "dark" ? "light" : "dark");
-  }
-
-  async function save() {
-    if (!session?.user) {
-      if (session?.authConfigured) await signIn("google", { callbackUrl: "/" });
-      else router.push("/setup");
-      return;
-    }
-    setBusy(true);
-    const response = await fetch("/api/palettes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paletteId,
-        paletteName,
-        versionName,
-        brandColors: colors,
-        autoOptimize,
-        pickerMode,
-        harmony,
-      }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
-      setStatus(data.message ?? "The version was not saved.");
-      return;
-    }
-    setPaletteId(data.paletteId);
-    setStatus(`Saved “${versionName}”.`);
-    refreshPalettes();
-  }
-
-  function restore(palette: SavedPalette, version: SavedVersion) {
-    const config = version.config;
-    setPaletteId(palette.id);
-    setPaletteName(palette.name);
-    setVersionName(version.name);
-    setAutoOptimize(config.autoOptimize);
-    setPickerMode(config.pickerMode);
-    setHarmony(config.harmony);
-    setSelected(0);
-    setNotes(config.notes ?? []);
-    commit(config.brandColors, "restore");
-    setStatus(`Restored ${palette.name}, ${version.name}.`);
   }
 
   const databaseLabel =
@@ -499,8 +460,14 @@ export function Workspace() {
                 colors={colors.map((color) => color.hex)}
                 library={library}
                 localOnly={sessionReady && !session?.user}
-                onApply={(hexes) => {
-                  commit(fromHexes(hexes), "restore");
+                paletteName={paletteName}
+                onRename={(hexes, name) => {
+                  if (sameCombo(hexes, colorsRef.current.map((color) => color.hex))) setPaletteName(name);
+                  setLibrary((current) => renameHistory(current, hexes, name));
+                }}
+                onApply={(hexes, name) => {
+                  setPaletteName(name);
+                  commit(fromHexes(hexes), "restore", name);
                   setStatus("Restored a palette from history.");
                 }}
                 onLibrary={acceptLibrary}
@@ -582,11 +549,19 @@ export function Workspace() {
                   <option value="monochromatic">Monochromatic</option>
                 </select>
               </div>
-              <div className="tool-row">
-                <Flyout label="Most popular" presets={POPULAR_PRESETS} onSelect={applyPreset} />
-                <Flyout label="Contemporary" presets={CONTEMPORARY_PRESETS} onSelect={applyPreset} />
-                <Flyout label="Classic" presets={CLASSIC_PRESETS} onSelect={applyPreset} />
-              </div>
+              <CategoryRail
+                groups={[
+                  { label: "Most popular", presets: POPULAR_PRESETS },
+                  { label: "Contemporary", presets: CONTEMPORARY_PRESETS },
+                  { label: "Classic", presets: CLASSIC_PRESETS },
+                  { label: "Light", presets: LIGHT_PRESETS },
+                  { label: "Vibrant", presets: VIBRANT_PRESETS },
+                  { label: "Monochromatic", presets: MONOCHROMATIC_PRESETS },
+                  { label: "Pastel", presets: PASTEL_PRESETS },
+                  { label: "High contrast", presets: CONTRAST_PRESETS },
+                ]}
+                onSelect={applyPreset}
+              />
               {notes.length ? (
                 <ul className="note-list">
                   {notes.map((note) => (
@@ -634,7 +609,6 @@ export function Workspace() {
               Choose a cell in the matrix to put that pair in the badges. {databaseLabel}
             </p>
           </div>
-          {activePair ? <Badges pair={activePair} /> : null}
           <Matrix
             snapshot={snapshot}
             pairs={pairs}
@@ -670,30 +644,6 @@ export function Workspace() {
             <h2 id="export-heading">Export</h2>
           </div>
           <ExportPanel snapshot={snapshot} paletteName={paletteName} />
-        </section>
-
-        <section className="section" aria-labelledby="history-heading">
-          <div className="section-head">
-            <h2 id="history-heading">Versions</h2>
-            <p>Name a version when you want a record. Undo on this page is separate from saved versions.</p>
-          </div>
-          <HistoryPanel
-            signedIn={Boolean(session?.user)}
-            palettes={palettes}
-            paletteId={paletteId}
-            paletteName={paletteName}
-            versionName={versionName}
-            onPaletteName={setPaletteName}
-            onVersionName={setVersionName}
-            onSave={save}
-            onRestore={restore}
-            onNew={() => {
-              setPaletteId(undefined);
-              setVersionName("New version");
-              setStatus("The next save starts a new palette.");
-            }}
-            busy={busy}
-          />
         </section>
 
         <section className="section">

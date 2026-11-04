@@ -3,6 +3,7 @@ import {
   historyRows,
   parseLibrary,
   pushHistory,
+  renameHistory,
   matrixStylesheet,
   saveMatrixToFavorites,
   saveMatrixToNewProject,
@@ -42,6 +43,33 @@ describe("palette library", () => {
     const rows = historyRows(harbor, library(stored).history);
     expect(rows.map((row) => row.colors[0])).toEqual(["#001223", "#0c3d66", "#111111", "#abcdef"]);
     expect(rows[0].id).toBe("current");
+  });
+
+  it("keeps a palette name on the history row and on a saved copy", () => {
+    const named = pushHistory(library(), harbor, "Harbor");
+    expect(named.history[0].name).toBe("Harbor");
+    const rows = historyRows(harbor, named.history, "");
+    expect(rows[0].name).toBe("Harbor");
+    const renamed = renameHistory(named, harbor, "  Tide  ");
+    expect(renamed.history[0].name).toBe("Tide");
+    expect(historyRows(harbor, renamed.history, "Tide")[0].name).toBe("Tide");
+    expect(renameHistory(renamed, harbor, "   ").history[0].name).toBeUndefined();
+
+    const favorites = saveToFavorites(library(), harbor, "Harbor");
+    expect(favorites.ok).toBe(true);
+    if (!favorites.ok) return;
+    expect(favorites.library.favorites[0].name).toBe("Harbor");
+    const created = saveToNewProject(library(), ink, "Brand", "Ledger");
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.library.projects[0].entries[0].name).toBe("Ledger");
+    const parsed = parseLibrary({
+      history: [{ id: "a", colors: harbor, name: "Harbor" }],
+      favorites: [{ id: "b", colors: ink }],
+      projects: [],
+    });
+    expect(parsed?.history[0].name).toBe("Harbor");
+    expect(parsed?.favorites[0].name).toBeUndefined();
   });
 
   it("saves favorites and projects without duplicating a combo", () => {
