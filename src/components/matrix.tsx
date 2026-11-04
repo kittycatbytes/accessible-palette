@@ -10,21 +10,17 @@ import {
   type PaletteLibrary,
   type SavedPlace,
 } from "@/lib/library";
-import { recommendBrandBlocks } from "@/lib/recommend";
+import { brandCellPasses, recommendBrandBlocks } from "@/lib/recommend";
 import type { ContrastPair, Snapshot } from "@/lib/types";
 import { Badges } from "./badges";
 import { SaveDialog } from "./save-dialog";
-
-function pairPasses(pair: ContrastPair) {
-  return !pair.exempt && pair.aaNormal && pair.nonText;
-}
 
 function openAxes(keys: string[], grid: ContrastPair[], hide: boolean) {
   if (!hide) return { rows: new Set(keys), cols: new Set(keys) };
   const byKey = new Map(grid.map((pair) => [`${pair.fgKey}:${pair.bgKey}`, pair]));
   const pass = (fg: string, bg: string) => {
     const pair = byKey.get(`${fg}:${bg}`);
-    return Boolean(pair && pairPasses(pair));
+    return Boolean(pair && brandCellPasses(pair));
   };
   let rows = keys.filter((fg) => keys.some((bg) => pass(fg, bg)));
   let cols = keys.filter((bg) => rows.some((fg) => pass(fg, bg)));
@@ -84,11 +80,11 @@ export function Matrix({
   const viewPairs = pairs.filter((pair) => pair.view === view);
   const required = viewPairs
     .filter((pair) => pair.required)
-    .filter((pair) => !hideFailures || pairPasses(pair));
+    .filter((pair) => !hideFailures || brandCellPasses(pair));
   useEffect(() => {
     const shown = required.some((pair) => `${pair.view}:${pair.fgKey}:${pair.bgKey}` === activeKey);
     if (shown) return;
-    const first = required.find((pair) => pairPasses(pair));
+    const first = required.find((pair) => brandCellPasses(pair));
     if (first) onSelect(first);
   }, [activeKey, onSelect, required]);
   const keys = [
@@ -102,7 +98,7 @@ export function Matrix({
   const paletteColors = snapshot.brandColors.map((color) => color.hex);
   const selectedCombos = pinned.flatMap((key) => {
     const pair = pairs.find((item) => item.view === "brand" && `${item.fgKey}:${item.bgKey}` === key);
-    return pair ? [{ fgHex: pair.fgHex, bgHex: pair.bgHex, purpose: pair.purpose }] : [];
+    return pair && brandCellPasses(pair) ? [{ fgHex: pair.fgHex, bgHex: pair.bgHex, purpose: pair.purpose }] : [];
   });
 
   return (
@@ -198,13 +194,13 @@ export function Matrix({
               ...keys.map((bgKey) => {
                 const pair = grid.find((item) => item.fgKey === fgKey && item.bgKey === bgKey);
                 const axisOpen = rowOpen && axes.cols.has(bgKey);
-                const failed = Boolean(hideFailures && pair && !pair.exempt && !pairPasses(pair));
+                const failed = Boolean(hideFailures && pair && !pair.exempt && !brandCellPasses(pair));
                 if (!pair || !axisOpen) {
                   return <div key={`${fgKey}-${bgKey}`} role="gridcell" className="matrix-slot is-collapsed" aria-hidden="true" />;
                 }
                 const cellKey = `${pair.fgKey}:${pair.bgKey}`;
                 const selected = activeKey === `${pair.view}:${pair.fgKey}:${pair.bgKey}`;
-                const kept = view === "brand" && pinned.includes(cellKey);
+                const kept = view === "brand" && pinned.includes(cellKey) && brandCellPasses(pair);
                 return (
                   <div key={`${fgKey}-${bgKey}`} role="gridcell" className="matrix-slot">
                     <button
@@ -220,11 +216,11 @@ export function Matrix({
                       onClick={() => {
                         onSelect(pair);
                         if (view !== "brand") return;
-                        setPinned((current) =>
-                          current.includes(cellKey)
-                            ? current.filter((item) => item !== cellKey)
-                            : [...current, cellKey],
-                        );
+                        setPinned((current) => {
+                          if (current.includes(cellKey)) return current.filter((item) => item !== cellKey);
+                          if (!brandCellPasses(pair)) return current;
+                          return [...current, cellKey];
+                        });
                       }}
                     >
                       {failed ? (

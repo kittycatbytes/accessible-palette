@@ -93,8 +93,16 @@ function chooseLink(
 }
 
 /**
+ * The brand matrix marks a cell failed unless it clears AA for normal text.
+ * A button edge that only clears the 3:1 UI bar still counts as failed there.
+ */
+export function brandCellPasses(pair: Pick<ContrastPair, "exempt" | "aaNormal" | "nonText">): boolean {
+  return !pair.exempt && pair.aaNormal && pair.nonText;
+}
+
+/**
  * A small set of brand-matrix cells for one interface: text, a second line,
- * a button, and the same idea on a dark page. Scores keep failing pairs out.
+ * a button, and the same idea on a dark page. Failing cells stay out of the set.
  * The set stays on a few shared surfaces so the blocks can sit on one screen.
  */
 export function recommendBrandBlocks(pairs: ContrastPair[]): string[] {
@@ -106,17 +114,16 @@ export function recommendBrandBlocks(pairs: ContrastPair[]): string[] {
   const darkBg = ids.includes("dark-page") ? "dark-page" : "black";
   const chosen: string[] = [];
 
-  function add(fgKey?: string, bgKey?: string, minimum: "text" | "ui" = "ui") {
+  function add(fgKey?: string, bgKey?: string) {
     if (!fgKey || !bgKey || fgKey === bgKey) return;
     const pair = findPair(brand, fgKey, bgKey);
-    if (!pair) return;
-    if (minimum === "text" ? !pair.aaNormal : !pair.nonText) return;
+    if (!pair || !brandCellPasses(pair)) return;
     const key = `${fgKey}:${bgKey}`;
     if (!chosen.includes(key)) chosen.push(key);
   }
 
   const body = chooseText(brand, [...brandIds, "black"], lightBg);
-  if (body) add(body.fgKey, lightBg, "text");
+  if (body) add(body.fgKey, lightBg);
 
   const secondary = chooseText(
     brand,
@@ -124,12 +131,12 @@ export function recommendBrandBlocks(pairs: ContrastPair[]): string[] {
     lightBg,
     body?.fgHex,
   );
-  if (secondary) add(secondary.fgKey, lightBg, "text");
+  if (secondary) add(secondary.fgKey, lightBg);
 
   const button = chooseButton(brand, brandIds, lightBg, body ? [body.fgKey] : []);
   if (button) {
-    add("white", button, "text");
-    add(button, lightBg, "ui");
+    add("white", button);
+    add(button, lightBg);
   }
 
   const link = chooseLink(
@@ -141,19 +148,19 @@ export function recommendBrandBlocks(pairs: ContrastPair[]): string[] {
       (hex): hex is string => Boolean(hex),
     ),
   );
-  if (link) add(link, lightBg, "text");
+  if (link) add(link, lightBg);
 
   const darkText = chooseText(brand, ["white", "light-page", ...brandIds], darkBg);
-  if (darkText) add(darkText.fgKey, darkBg, "text");
+  if (darkText) add(darkText.fgKey, darkBg);
 
   const buttonOnDark = button ? findPair(brand, button, darkBg) : undefined;
   if (button && buttonOnDark?.nonText) {
-    add(button, darkBg, "ui");
+    add(button, darkBg);
   } else {
     const darkButton = chooseButton(brand, brandIds, darkBg, [body?.fgKey, button].filter((id): id is string => Boolean(id)));
     if (darkButton) {
-      add("white", darkButton, "text");
-      add(darkButton, darkBg, "ui");
+      add("white", darkButton);
+      add(darkButton, darkBg);
     }
   }
 
