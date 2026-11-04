@@ -7,6 +7,7 @@ import {
   saveToNewProject,
   saveToProject,
   type PaletteLibrary,
+  type SavedPlace,
 } from "@/lib/library";
 import { SaveDialog } from "./save-dialog";
 
@@ -16,12 +17,14 @@ export function ComboHistory({
   localOnly,
   onApply,
   onLibrary,
+  onSaved,
 }: {
   colors: string[];
   library: PaletteLibrary;
   localOnly: boolean;
   onApply: (colors: string[]) => void;
   onLibrary: (library: PaletteLibrary) => void;
+  onSaved: (place: SavedPlace) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -108,6 +111,7 @@ export function ComboHistory({
                 : saveToProject(library, draft, projectId);
           if (!result.ok) return result.message;
           onLibrary(result.library);
+          onSaved(result.place);
           return null;
         }}
       >

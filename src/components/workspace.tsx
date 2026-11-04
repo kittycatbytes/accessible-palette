@@ -10,6 +10,7 @@ import {
   parseLibrary,
   pushHistory,
   type PaletteLibrary,
+  type SavedPlace,
 } from "@/lib/library";
 import { colorsFromHarmony, paletteFromHarmony } from "@/lib/harmony";
 import { optimizeBrand } from "@/lib/optimize";
@@ -86,6 +87,7 @@ export function Workspace() {
   const [sessionReady, setSessionReady] = useState(false);
   const [library, setLibrary] = useState<PaletteLibrary>(EMPTY_LIBRARY);
   const [libraryReady, setLibraryReady] = useState(false);
+  const [toast, setToast] = useState<{ id: number; place: SavedPlace } | null>(null);
   const [palettes, setPalettes] = useState<SavedPalette[]>([]);
   const [paletteId, setPaletteId] = useState<string | undefined>();
   const [paletteName, setPaletteName] = useState("Harbor");
@@ -189,6 +191,11 @@ export function Workspace() {
 
   useEffect(() => {
     if (!libraryReady || !sessionReady) return;
+    try {
+      sessionStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library));
+    } catch {
+      // Storage can be blocked. The signed-in copy still goes to the account.
+    }
     if (session?.user) {
       const handle = window.setTimeout(() => {
         void fetch("/api/library", {
@@ -201,6 +208,12 @@ export function Workspace() {
     }
     localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library));
   }, [library, libraryReady, sessionReady, session?.user]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const handle = window.setTimeout(() => setToast(null), 8000);
+    return () => window.clearTimeout(handle);
+  }, [toast]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -243,6 +256,16 @@ export function Workspace() {
         if (data?.palettes) setPalettes(data.palettes);
       })
       .catch(() => undefined);
+  }
+
+  function acceptLibrary(next: PaletteLibrary) {
+    touched.current = true;
+    try {
+      sessionStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage can be blocked. The signed-in copy still goes to the account.
+    }
+    setLibrary(next);
   }
 
   function remember() {
@@ -480,7 +503,8 @@ export function Workspace() {
                   commit(fromHexes(hexes), "restore");
                   setStatus("Restored a palette from history.");
                 }}
-                onLibrary={setLibrary}
+                onLibrary={acceptLibrary}
+                onSaved={(place) => setToast({ id: Date.now(), place })}
               />
               <PaletteStage
                 colors={colors}
@@ -618,7 +642,8 @@ export function Workspace() {
             library={library}
             localOnly={sessionReady && !session?.user}
             onSelect={(pair) => setActive({ view: pair.view, fgKey: pair.fgKey, bgKey: pair.bgKey })}
-            onLibrary={setLibrary}
+            onLibrary={acceptLibrary}
+            onSaved={(place) => setToast({ id: Date.now(), place })}
           />
         </section>
 
@@ -682,6 +707,17 @@ export function Workspace() {
           </ul>
         </section>
       </main>
+      {toast ? (
+        <div className="save-toast" role="status">
+          <p>
+            {toast.place.kind === "matrix" ? "Brand contrast matrix" : "Palette"} saved to{" "}
+            <a href={toast.place.href}>{toast.place.name}</a>.
+          </p>
+          <button type="button" className="save-toast-dismiss" onClick={() => setToast(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

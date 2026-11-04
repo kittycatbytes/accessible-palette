@@ -8,6 +8,7 @@ import {
   saveMatrixToNewProject,
   saveMatrixToProject,
   type PaletteLibrary,
+  type SavedPlace,
 } from "@/lib/library";
 import { CURATED_TOKEN_KEYS } from "@/lib/theme";
 import type { ContrastPair, Snapshot } from "@/lib/types";
@@ -30,6 +31,7 @@ export function Matrix({
   localOnly,
   onSelect,
   onLibrary,
+  onSaved,
 }: {
   snapshot: Snapshot;
   pairs: ContrastPair[];
@@ -38,6 +40,7 @@ export function Matrix({
   localOnly: boolean;
   onSelect: (pair: ContrastPair) => void;
   onLibrary: (library: PaletteLibrary) => void;
+  onSaved: (place: SavedPlace) => void;
 }) {
   const [view, setView] = useState<ContrastPair["view"]>("brand");
   const [full, setFull] = useState(false);
@@ -244,6 +247,7 @@ export function Matrix({
                   : saveMatrixToProject(library, paletteColors, selectedCombos, projectId);
             if (!result.ok) return result.message;
             onLibrary(result.library);
+            onSaved(result.place);
             return null;
           }}
         >

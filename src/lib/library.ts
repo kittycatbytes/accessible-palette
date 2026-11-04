@@ -159,9 +159,21 @@ export function historyRows(current: string[], history: ColorCombo[]): ColorComb
   return [{ id: "current", colors: normalized }, ...previous];
 }
 
+export type SavedPlace = {
+  name: string;
+  href: string;
+  kind: "palette" | "matrix";
+};
+
 export type SaveResult =
-  | { ok: true; library: PaletteLibrary }
+  | { ok: true; library: PaletteLibrary; place: SavedPlace }
   | { ok: false; message: string };
+
+export const FAVORITES_PLACE = { name: "Favorites", href: "/favorites" };
+
+function projectPlace(project: { id: string; name: string }) {
+  return { name: project.name, href: `/projects/${project.id}` };
+}
 
 function addEntry(entries: ColorCombo[], colors: string[]): ColorCombo[] | null {
   const normalized = normalizeColors(colors);
@@ -173,7 +185,7 @@ function addEntry(entries: ColorCombo[], colors: string[]): ColorCombo[] | null 
 export function saveToFavorites(library: PaletteLibrary, colors: string[]): SaveResult {
   const entries = addEntry(library.favorites, colors);
   if (!entries) return { ok: false, message: "That palette is already in Favorites." };
-  return { ok: true, library: { ...library, favorites: entries } };
+  return { ok: true, library: { ...library, favorites: entries }, place: { ...FAVORITES_PLACE, kind: "palette" } };
 }
 
 export function saveToNewProject(library: PaletteLibrary, colors: string[], name: string): SaveResult {
@@ -191,7 +203,11 @@ export function saveToNewProject(library: PaletteLibrary, colors: string[], name
     entries: [{ id: crypto.randomUUID(), colors: normalized }],
     matrices: [],
   };
-  return { ok: true, library: { ...library, projects: [...library.projects, project] } };
+  return {
+    ok: true,
+    library: { ...library, projects: [...library.projects, project] },
+    place: { ...projectPlace(project), kind: "palette" },
+  };
 }
 
 function selectionKey(combos: MatrixCombo[]): string {
@@ -227,7 +243,11 @@ export function saveMatrixToFavorites(
   const added = addMatrix(library.matrices, colors, combos);
   if (!added) return { ok: false, message: "That contrast matrix could not be saved." };
   if ("duplicate" in added) return { ok: false, message: "Those color combos are already in Favorites." };
-  return { ok: true, library: { ...library, matrices: added.matrices } };
+  return {
+    ok: true,
+    library: { ...library, matrices: added.matrices },
+    place: { ...FAVORITES_PLACE, kind: "matrix" },
+  };
 }
 
 export function saveMatrixToNewProject(
@@ -251,7 +271,11 @@ export function saveMatrixToNewProject(
     entries: [],
     matrices: added.matrices,
   };
-  return { ok: true, library: { ...library, projects: [...library.projects, project] } };
+  return {
+    ok: true,
+    library: { ...library, projects: [...library.projects, project] },
+    place: { ...projectPlace(project), kind: "matrix" },
+  };
 }
 
 export function saveMatrixToProject(
@@ -269,7 +293,11 @@ export function saveMatrixToProject(
   const projects = library.projects.map((project, item) =>
     item === index ? { ...project, matrices: added.matrices } : project,
   );
-  return { ok: true, library: { ...library, projects } };
+  return {
+    ok: true,
+    library: { ...library, projects },
+    place: { ...projectPlace(library.projects[index]), kind: "matrix" },
+  };
 }
 
 export function saveToProject(library: PaletteLibrary, colors: string[], projectId: string): SaveResult {
@@ -280,5 +308,39 @@ export function saveToProject(library: PaletteLibrary, colors: string[], project
   const projects = library.projects.map((project, item) =>
     item === index ? { ...project, entries } : project,
   );
-  return { ok: true, library: { ...library, projects } };
+  return {
+    ok: true,
+    library: { ...library, projects },
+    place: { ...projectPlace(library.projects[index]), kind: "palette" },
+  };
+}
+
+export function classNameForBlock(purpose: string, used: Set<string>): string {
+  const slug = purpose
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const base = !slug || /^[0-9-]/.test(slug) ? `pair-${slug || "block"}` : slug;
+  let name = base;
+  let suffix = 2;
+  while (used.has(name)) {
+    name = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  used.add(name);
+  return name;
+}
+
+export function matrixStylesheet(matrix: SavedMatrix): string {
+  const used = new Set<string>();
+  const rules = matrix.combos.map((combo) => {
+    const name = classNameForBlock(combo.purpose, used);
+    return `/* ${combo.purpose} */\n.${name} {\n  color: ${combo.fgHex};\n  background-color: ${combo.bgHex};\n}`;
+  });
+  return `${rules.join("\n\n")}\n`;
+}
+
+export function matrixBlocks(matrix: SavedMatrix): { className: string; combo: MatrixCombo }[] {
+  const used = new Set<string>();
+  return matrix.combos.map((combo) => ({ className: classNameForBlock(combo.purpose, used), combo }));
 }

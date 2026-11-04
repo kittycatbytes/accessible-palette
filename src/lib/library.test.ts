@@ -3,6 +3,7 @@ import {
   historyRows,
   parseLibrary,
   pushHistory,
+  matrixStylesheet,
   saveMatrixToFavorites,
   saveMatrixToNewProject,
   saveToFavorites,
@@ -53,6 +54,11 @@ describe("palette library", () => {
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     expect(created.library.projects[0].name).toBe("Brand");
+    expect(created.place).toEqual({
+      name: "Brand",
+      href: `/projects/${created.library.projects[0].id}`,
+      kind: "palette",
+    });
     expect(saveToNewProject(created.library, harbor, "brand").ok).toBe(false);
 
     const again = saveToProject(created.library, ink, created.library.projects[0].id);
@@ -84,5 +90,28 @@ describe("palette library", () => {
     expect(created.library.projects[0].matrices[0].combos).toHaveLength(2);
     expect(created.library.projects[0].entries).toEqual([]);
     expect(saveMatrixToFavorites(library(), harbor, []).ok).toBe(false);
+    expect(created.place.href.startsWith("/projects/")).toBe(true);
+    expect(created.place.kind).toBe("matrix");
+  });
+
+  it("names stylesheet classes from the selected matrix blocks", () => {
+    const saved = saveMatrixToFavorites(library(), harbor, tide);
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    const css = matrixStylesheet(saved.library.matrices[0]);
+    expect(css).toContain(".color-1-on-white");
+    expect(css).toContain("color: #001223;");
+    expect(css).toContain("background-color: #ffffff;");
+    expect(css).toContain(".color-2-on-color-1");
+    expect(css).toContain("color: #0f6e6a;");
+    expect(css).toContain("background-color: #001223;");
+
+    const repeated = matrixStylesheet({
+      id: "m",
+      colors: harbor,
+      combos: [tide[0], { ...tide[0], fgHex: "#0f6e6a" }],
+    });
+    expect(repeated).toContain(".color-1-on-white {");
+    expect(repeated).toContain(".color-1-on-white-2 {");
   });
 });
