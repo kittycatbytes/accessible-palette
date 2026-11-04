@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Accessible Palette",
+  title: "Accessible Color Palette Generator & WCAG Contrast Checker",
   description:
     "Build a WCAG color palette, check contrast for text and UI, and save named versions.",
 };

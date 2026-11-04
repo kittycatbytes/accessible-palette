@@ -14,6 +14,8 @@ export function SaveDialog({
   library,
   localOnly,
   paletteName,
+  nameLabel = "Palette name",
+  destinationLegend = "Where should this palette go?",
   onDismiss,
   onSubmit,
   children,
@@ -26,6 +28,8 @@ export function SaveDialog({
   library: PaletteLibrary;
   localOnly: boolean;
   paletteName?: string;
+  nameLabel?: string;
+  destinationLegend?: string;
   onDismiss: () => void;
   onSubmit: (choice: {
     destination: SaveDestination;
@@ -98,7 +102,7 @@ export function SaveDialog({
         {children}
         {paletteName !== undefined ? (
           <div className="field">
-            <label htmlFor={paletteNameId}>Palette name</label>
+            <label htmlFor={paletteNameId}>{nameLabel}</label>
             <input
               id={paletteNameId}
               value={assetName}
@@ -109,7 +113,7 @@ export function SaveDialog({
           </div>
         ) : null}
         <fieldset>
-          <legend>Where should this palette go?</legend>
+          <legend>{destinationLegend}</legend>
           <label className="check">
             <input
               type="radio"

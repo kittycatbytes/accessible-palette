@@ -3,10 +3,15 @@ import {
   historyRows,
   parseLibrary,
   pushHistory,
+  recentProjects,
   renameHistory,
+  renameProject,
   matrixStylesheet,
   saveMatrixToFavorites,
   saveMatrixToNewProject,
+  nextTemplateName,
+  saveTemplateToFavorites,
+  saveTemplateToProject,
   saveToFavorites,
   saveToNewProject,
   saveToProject,
@@ -22,6 +27,7 @@ function library(history: string[][] = []): PaletteLibrary {
     favorites: [],
     projects: [],
     matrices: [],
+    templates: [],
   };
 }
 
@@ -88,6 +94,16 @@ describe("palette library", () => {
       kind: "palette",
     });
     expect(saveToNewProject(created.library, harbor, "brand").ok).toBe(false);
+    const renamed = renameProject(created.library, created.library.projects[0].id, "  Tide  ");
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) return;
+    expect(renamed.library.projects[0].name).toBe("Tide");
+    expect(renameProject(renamed.library, renamed.library.projects[0].id, "tide").ok).toBe(true);
+    const second = saveToNewProject(renamed.library, harbor, "Harbor");
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(renameProject(second.library, second.library.projects[1].id, "Tide").ok).toBe(false);
+    expect(recentProjects(second.library.projects).map((project) => project.name)).toEqual(["Harbor", "Tide"]);
 
     const again = saveToProject(created.library, ink, created.library.projects[0].id);
     expect(again.ok).toBe(false);
@@ -102,7 +118,57 @@ describe("palette library", () => {
     });
     expect(parsed?.projects[0].name).toBe("Brand");
     expect(parsed?.matrices).toEqual([]);
+    expect(parsed?.templates).toEqual([]);
     expect(parsed?.projects[0].matrices).toEqual([]);
+    expect(parsed?.projects[0].templates).toEqual([]);
+  });
+
+  it("numbers a repeated template and leaves the first copy unnumbered", () => {
+    const label = "Northroom Reservation System";
+    expect(nextTemplateName([], "northroom", "Harbor", label)).toBe("Northroom Reservation System Harbor");
+    const first = saveTemplateToFavorites(library(), {
+      name: "Northroom Reservation System Harbor",
+      template: "northroom",
+      page: "light",
+      colors: harbor,
+      paletteName: "Harbor",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(nextTemplateName(first.library.templates, "northroom", "Harbor", label)).toBe(
+      "Northroom Reservation System Harbor 1",
+    );
+    const second = saveTemplateToProject(
+      first.library,
+      {
+        name: "Northroom Reservation System Harbor 1",
+        template: "northroom",
+        page: "dark",
+        colors: harbor,
+        paletteName: "Harbor",
+      },
+      "missing",
+    );
+    expect(second.ok).toBe(false);
+    const created = saveToNewProject(first.library, ink, "Brand");
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const saved = saveTemplateToProject(
+      created.library,
+      {
+        name: "Ashline Metrics Dashboard Harbor",
+        template: "ashline",
+        page: "dark",
+        colors: harbor,
+        paletteName: "Harbor",
+      },
+      created.library.projects[0].id,
+    );
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(saved.library.projects[0].templates[0].name).toBe("Ashline Metrics Dashboard Harbor");
+    expect(saved.place.kind).toBe("template");
+    expect(saveTemplateToFavorites(library(), { ...first.library.templates[0], name: "   ", page: "light" }).ok).toBe(false);
   });
 
   it("saves a brand matrix with the selected color combos", () => {

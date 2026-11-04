@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import {
+  collectTemplates,
+  nextTemplateName,
+  saveTemplateToFavorites,
+  saveTemplateToNewProject,
+  saveTemplateToProject,
+  type PaletteLibrary,
+  type SavedPlace,
+} from "@/lib/library";
+import { readPageView, rememberPageView, type PreviewTemplate } from "@/lib/page-view";
 import type { TokenMap } from "@/lib/types";
 import { AlertIcon, CheckIcon, CrossIcon } from "./icons";
+import { SaveDialog } from "./save-dialog";
 
 const TEMPLATES = [
   { id: "northroom", brand: "Northroom", kind: "Reservation System", nav: ["Visit", "Collection", "Journal"] },
@@ -10,7 +21,7 @@ const TEMPLATES = [
   { id: "ashline", brand: "Ashline", kind: "Metrics Dashboard", nav: ["Overview", "Logs", "Alerts"] },
 ] as const;
 
-type TemplateId = (typeof TEMPLATES)[number]["id"];
+type TemplateId = PreviewTemplate;
 
 const REQUESTS: Array<[number, number]> = [
   [8, 74],
@@ -51,9 +62,39 @@ const LOGS = [
   { time: "09:11", level: "Warn", event: "cache.miss /catalog", tone: "warning" },
 ] as const;
 
-export function Preview({ light, dark }: { light: TokenMap; dark: TokenMap }) {
+export function Preview({
+  light,
+  dark,
+  colors,
+  paletteName,
+  library,
+  localOnly,
+  onLibrary,
+  onSaved,
+}: {
+  light: TokenMap;
+  dark: TokenMap;
+  colors: string[];
+  paletteName: string;
+  library: PaletteLibrary;
+  localOnly: boolean;
+  onLibrary: (library: PaletteLibrary) => void;
+  onSaved: (place: SavedPlace) => void;
+}) {
   const [mode, setMode] = useState<"light" | "dark">("light");
   const [templateId, setTemplateId] = useState<TemplateId>("northroom");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [suggestedName, setSuggestedName] = useState("");
+
+  useLayoutEffect(() => {
+    const view = readPageView();
+    if (view.page) setMode(view.page);
+    if (view.template) setTemplateId(view.template);
+  }, []);
+
+  useEffect(() => {
+    rememberPageView({ page: mode, template: templateId });
+  }, [mode, templateId]);
   const [open, setOpen] = useState(false);
   const brandRef = useRef<HTMLDivElement>(null);
   const switchRef = useRef<HTMLButtonElement>(null);
@@ -95,8 +136,17 @@ export function Preview({ light, dark }: { light: TokenMap; dark: TokenMap }) {
     }
   }
 
+  function openSave() {
+    const current = TEMPLATES.find((item) => item.id === templateId) ?? TEMPLATES[0];
+    setSuggestedName(
+      nextTemplateName(collectTemplates(library), current.id, paletteName, `${current.brand} ${current.kind}`),
+    );
+    setSaveOpen(true);
+  }
+
   return (
     <div className="stack">
+      <div className="preview-tools">
       <div role="tablist" aria-label="Preview page theme" className="tool-row">
         <button
           type="button"
@@ -118,6 +168,11 @@ export function Preview({ light, dark }: { light: TokenMap; dark: TokenMap }) {
         >
           Dark page
         </button>
+      </div>
+      <button type="button" className="button button-ghost combo-save" onClick={openSave}>
+        <span aria-hidden="true">+</span>
+        Save
+      </button>
       </div>
       <div
         role="tabpanel"
@@ -211,6 +266,35 @@ export function Preview({ light, dark }: { light: TokenMap; dark: TokenMap }) {
           </footer>
         </article>
       </div>
+      <SaveDialog
+        open={saveOpen}
+        title="Save template"
+        nameLabel="Name"
+        destinationLegend="Where should this template go?"
+        paletteName={suggestedName}
+        library={library}
+        localOnly={localOnly}
+        onDismiss={() => setSaveOpen(false)}
+        onSubmit={({ destination, projectName, projectId, paletteName: nextName }) => {
+          const draft = {
+            name: nextName,
+            template: templateId,
+            page: mode,
+            colors,
+            paletteName,
+          };
+          const result =
+            destination === "favorites"
+              ? saveTemplateToFavorites(library, draft)
+              : destination === "new"
+                ? saveTemplateToNewProject(library, draft, projectName)
+                : saveTemplateToProject(library, draft, projectId);
+          if (!result.ok) return result.message;
+          onLibrary(result.library);
+          onSaved(result.place);
+          return null;
+        }}
+      />
     </div>
   );
 }

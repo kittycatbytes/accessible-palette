@@ -16,11 +16,23 @@ export type SavedMatrix = {
   combos: MatrixCombo[];
 };
 
+export type TemplateId = "northroom" | "marlow" | "ashline";
+
+export type SavedTemplate = {
+  id: string;
+  name: string;
+  template: TemplateId;
+  page: "light" | "dark";
+  colors: string[];
+  paletteName?: string;
+};
+
 export type PaletteProject = {
   id: string;
   name: string;
   entries: ColorCombo[];
   matrices: SavedMatrix[];
+  templates: SavedTemplate[];
 };
 
 export type PaletteLibrary = {
@@ -28,6 +40,7 @@ export type PaletteLibrary = {
   favorites: ColorCombo[];
   projects: PaletteProject[];
   matrices: SavedMatrix[];
+  templates: SavedTemplate[];
 };
 
 export const LIBRARY_STORAGE_KEY = "accessible-palette-library";
@@ -37,6 +50,7 @@ export const EMPTY_LIBRARY: PaletteLibrary = {
   favorites: [],
   projects: [],
   matrices: [],
+  templates: [],
 };
 
 const HEX = /^#[0-9a-f]{6}$/;
@@ -96,6 +110,45 @@ function readMatrices(value: unknown): SavedMatrix[] | null {
   return matrices as SavedMatrix[];
 }
 
+const TEMPLATE_IDS = new Set<TemplateId>(["northroom", "marlow", "ashline"]);
+
+function readTemplate(value: unknown): SavedTemplate | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as {
+    id?: unknown;
+    name?: unknown;
+    template?: unknown;
+    page?: unknown;
+    colors?: unknown;
+    paletteName?: unknown;
+  };
+  if (typeof record.id !== "string" || record.id.length === 0 || record.id.length > 80) return null;
+  if (typeof record.name !== "string") return null;
+  const name = record.name.trim();
+  if (name.length === 0 || name.length > 80) return null;
+  if (typeof record.template !== "string" || !TEMPLATE_IDS.has(record.template as TemplateId)) return null;
+  if (record.page !== "light" && record.page !== "dark") return null;
+  if (!Array.isArray(record.colors) || record.colors.some((hex) => typeof hex !== "string")) return null;
+  const colors = normalizeColors(record.colors as string[]);
+  if (!colors) return null;
+  return {
+    id: record.id,
+    name,
+    template: record.template as TemplateId,
+    page: record.page,
+    colors,
+    paletteName: readName(record.paletteName),
+  };
+}
+
+function readTemplates(value: unknown): SavedTemplate[] | null {
+  const source = value === undefined ? [] : value;
+  if (!Array.isArray(source)) return null;
+  const templates = source.slice(0, 40).map(readTemplate);
+  if (templates.some((item) => !item)) return null;
+  return templates as SavedTemplate[];
+}
+
 function cleanName(name: string | undefined): string | undefined {
   const trimmed = name?.trim().slice(0, 80) ?? "";
   return trimmed || undefined;
@@ -117,18 +170,25 @@ function readCombo(value: unknown): ColorCombo | null {
 
 export function parseLibrary(value: unknown): PaletteLibrary | null {
   if (!value || typeof value !== "object") return null;
-  const record = value as { history?: unknown; favorites?: unknown; projects?: unknown; matrices?: unknown };
+  const record = value as {
+    history?: unknown;
+    favorites?: unknown;
+    projects?: unknown;
+    matrices?: unknown;
+    templates?: unknown;
+  };
   if (!Array.isArray(record.history) || !Array.isArray(record.favorites) || !Array.isArray(record.projects)) {
     return null;
   }
   const history = record.history.slice(0, 12).map(readCombo);
   const favorites = record.favorites.slice(0, 100).map(readCombo);
   const matrices = readMatrices(record.matrices);
-  if (history.some((item) => !item) || favorites.some((item) => !item) || !matrices) return null;
+  const templates = readTemplates(record.templates);
+  if (history.some((item) => !item) || favorites.some((item) => !item) || !matrices || !templates) return null;
   const projects: PaletteProject[] = [];
   for (const item of record.projects.slice(0, 40)) {
     if (!item || typeof item !== "object") return null;
-    const project = item as { id?: unknown; name?: unknown; entries?: unknown; matrices?: unknown };
+    const project = item as { id?: unknown; name?: unknown; entries?: unknown; matrices?: unknown; templates?: unknown };
     if (typeof project.id !== "string" || project.id.length === 0 || project.id.length > 80) return null;
     if (typeof project.name !== "string") return null;
     const name = project.name.trim();
@@ -136,12 +196,14 @@ export function parseLibrary(value: unknown): PaletteLibrary | null {
     if (!Array.isArray(project.entries)) return null;
     const entries = project.entries.slice(0, 100).map(readCombo);
     const projectMatrices = readMatrices(project.matrices);
-    if (entries.some((entry) => !entry) || !projectMatrices) return null;
+    const projectTemplates = readTemplates(project.templates);
+    if (entries.some((entry) => !entry) || !projectMatrices || !projectTemplates) return null;
     projects.push({
       id: project.id,
       name,
       entries: entries as ColorCombo[],
       matrices: projectMatrices,
+      templates: projectTemplates,
     });
   }
   return {
@@ -149,6 +211,7 @@ export function parseLibrary(value: unknown): PaletteLibrary | null {
     favorites: favorites as ColorCombo[],
     projects,
     matrices,
+    templates,
   };
 }
 
@@ -164,6 +227,33 @@ export function pushHistory(library: PaletteLibrary, colors: string[], name?: st
   return {
     ...library,
     history: [{ id: crypto.randomUUID(), colors: normalized, name: stored }, ...library.history].slice(0, 12),
+  };
+}
+
+export function recentProjects<T>(projects: T[], count = 3): T[] {
+  return projects.slice(-count).reverse();
+}
+
+export function renameProject(library: PaletteLibrary, projectId: string, name: string): SaveResult {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, message: "Name the project before saving." };
+  if (trimmed.length > 80) return { ok: false, message: "Use a project name of 80 characters or fewer." };
+  const current = library.projects.find((project) => project.id === projectId);
+  if (!current) return { ok: false, message: "That project is not available." };
+  if (
+    library.projects.some(
+      (project) => project.id !== projectId && project.name.toLowerCase() === trimmed.toLowerCase(),
+    )
+  ) {
+    return { ok: false, message: "A project already uses that name." };
+  }
+  return {
+    ok: true,
+    library: {
+      ...library,
+      projects: library.projects.map((project) => (project.id === projectId ? { ...project, name: trimmed } : project)),
+    },
+    place: { name: trimmed, href: `/projects/${projectId}`, kind: "palette" },
   };
 }
 
@@ -190,7 +280,7 @@ export function historyRows(current: string[], history: ColorCombo[], currentNam
 export type SavedPlace = {
   name: string;
   href: string;
-  kind: "palette" | "matrix";
+  kind: "palette" | "matrix" | "template";
 };
 
 export type SaveResult =
@@ -230,6 +320,7 @@ export function saveToNewProject(library: PaletteLibrary, colors: string[], name
     name: trimmed,
     entries: [{ id: crypto.randomUUID(), colors: normalized, name: cleanName(paletteName) }],
     matrices: [],
+    templates: [],
   };
   return {
     ok: true,
@@ -298,6 +389,7 @@ export function saveMatrixToNewProject(
     name: trimmed,
     entries: [],
     matrices: added.matrices,
+    templates: [],
   };
   return {
     ok: true,
@@ -325,6 +417,95 @@ export function saveMatrixToProject(
     ok: true,
     library: { ...library, projects },
     place: { ...projectPlace(library.projects[index]), kind: "matrix" },
+  };
+}
+
+export type TemplateDraft = {
+  name: string;
+  template: TemplateId;
+  page: "light" | "dark";
+  colors: string[];
+  paletteName?: string;
+};
+
+export function collectTemplates(library: PaletteLibrary): SavedTemplate[] {
+  return [...library.templates, ...library.projects.flatMap((project) => project.templates)];
+}
+
+/** First copy has no number. Later copies use how many of that template and palette already exist. */
+export function nextTemplateName(
+  existing: SavedTemplate[],
+  template: TemplateId,
+  paletteName: string,
+  templateLabel: string,
+): string {
+  const palette = cleanName(paletteName) ?? "";
+  const count = existing.filter((item) => item.template === template && (item.paletteName ?? "") === palette).length;
+  const base = palette ? `${templateLabel} ${palette}` : templateLabel;
+  const named = count === 0 ? base : `${base} ${count}`;
+  return named.slice(0, 80);
+}
+
+function buildTemplate(draft: TemplateDraft): SavedTemplate | null {
+  const name = draft.name.trim();
+  if (!name || name.length > 80) return null;
+  const colors = normalizeColors(draft.colors);
+  if (!colors) return null;
+  return {
+    id: crypto.randomUUID(),
+    name,
+    template: draft.template,
+    page: draft.page,
+    colors,
+    paletteName: cleanName(draft.paletteName),
+  };
+}
+
+export function saveTemplateToFavorites(library: PaletteLibrary, draft: TemplateDraft): SaveResult {
+  const template = buildTemplate(draft);
+  if (!template) return { ok: false, message: "Name the template before saving." };
+  return {
+    ok: true,
+    library: { ...library, templates: [template, ...library.templates].slice(0, 40) },
+    place: { ...FAVORITES_PLACE, kind: "template" },
+  };
+}
+
+export function saveTemplateToNewProject(library: PaletteLibrary, draft: TemplateDraft, projectName: string): SaveResult {
+  const trimmed = projectName.trim();
+  if (!trimmed) return { ok: false, message: "Name the project before saving." };
+  if (trimmed.length > 80) return { ok: false, message: "Use a project name of 80 characters or fewer." };
+  if (library.projects.some((project) => project.name.toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, message: "A project already uses that name." };
+  }
+  const template = buildTemplate(draft);
+  if (!template) return { ok: false, message: "Name the template before saving." };
+  const project: PaletteProject = {
+    id: crypto.randomUUID(),
+    name: trimmed,
+    entries: [],
+    matrices: [],
+    templates: [template],
+  };
+  return {
+    ok: true,
+    library: { ...library, projects: [...library.projects, project] },
+    place: { ...projectPlace(project), kind: "template" },
+  };
+}
+
+export function saveTemplateToProject(library: PaletteLibrary, draft: TemplateDraft, projectId: string): SaveResult {
+  const index = library.projects.findIndex((project) => project.id === projectId);
+  if (index < 0) return { ok: false, message: "Choose a project." };
+  const template = buildTemplate(draft);
+  if (!template) return { ok: false, message: "Name the template before saving." };
+  const projects = library.projects.map((project, item) =>
+    item === index ? { ...project, templates: [template, ...project.templates].slice(0, 40) } : project,
+  );
+  return {
+    ok: true,
+    library: { ...library, projects },
+    place: { ...projectPlace(library.projects[index]), kind: "template" },
   };
 }
 

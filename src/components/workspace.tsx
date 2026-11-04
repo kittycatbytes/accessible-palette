@@ -1,9 +1,7 @@
 "use client";
 
-import { signIn, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { oklchToHex, readOklch } from "@/lib/color";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { formatRatio, oklchToHex, pairWord, readOklch } from "@/lib/color";
 import {
   EMPTY_LIBRARY,
   LIBRARY_STORAGE_KEY,
@@ -28,9 +26,11 @@ import {
   presetBias,
   type PalettePreset,
 } from "@/lib/presets";
+import { PAGE_SECTIONS, readPageView, rememberPageView } from "@/lib/page-view";
 import { buildSnapshot, listPairs } from "@/lib/snapshot";
 import type { BrandColor, ContrastPair, Harmony, PickerMode } from "@/lib/types";
 import { ColorPicker } from "./color-picker";
+import { InfoIcon } from "./icons";
 import { CvdPanel } from "./cvd-panel";
 import { ExportPanel } from "./export-panel";
 import { CategoryRail } from "./flyout";
@@ -38,6 +38,7 @@ import { ComboHistory } from "./combo-history";
 import { Matrix } from "./matrix";
 import { PaletteStage } from "./palette-stage";
 import { Preview } from "./preview";
+import { SiteHeader, writeTheme } from "./site-header";
 
 type SessionInfo = {
   authConfigured: boolean;
@@ -57,24 +58,6 @@ function fromHexes(hexes: string[]): BrandColor[] {
   return renumber(hexes.map((hex) => ({ id: "", name: "", hex })));
 }
 
-const themeListeners = new Set<() => void>();
-
-function subscribeTheme(listener: () => void) {
-  themeListeners.add(listener);
-  return () => themeListeners.delete(listener);
-}
-
-function readTheme(): "light" | "dark" {
-  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-}
-
-function writeTheme(next: "light" | "dark") {
-  if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
-  else document.documentElement.removeAttribute("data-theme");
-  localStorage.setItem("accessible-palette-theme", next);
-  themeListeners.forEach((listener) => listener());
-}
-
 export function Workspace() {
   const [colors, setColors] = useState<BrandColor[]>(() => fromHexes(POPULAR_PRESETS[0].colors));
   const [selected, setSelected] = useState(0);
@@ -92,8 +75,6 @@ export function Workspace() {
     fgKey: string;
     bgKey: string;
   } | null>(null);
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "light" as const);
-  const router = useRouter();
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [library, setLibrary] = useState<PaletteLibrary>(EMPTY_LIBRARY);
@@ -107,6 +88,57 @@ export function Workspace() {
   const [past, setPast] = useState<BrandColor[][]>([]);
   const [future, setFuture] = useState<BrandColor[][]>([]);
   colorsRef.current = colors;
+
+  useLayoutEffect(() => {
+    const view = readPageView();
+    if (view.colors) {
+      touched.current = true;
+      const numbered = renumber(fromHexes(view.colors));
+      colorsRef.current = numbered;
+      setColors(numbered);
+      if (view.name) setPaletteName(view.name);
+      if (typeof view.dot === "number") setSelected(Math.min(view.dot, numbered.length - 1));
+      setStatus("Opened from a shared link.");
+    } else if (view.name) {
+      setPaletteName(view.name);
+    }
+    if (view.pair) setActive({ view: "brand", fgKey: view.pair.fg, bgKey: view.pair.bg });
+    if (view.theme) writeTheme(view.theme);
+  }, []);
+
+  useEffect(() => {
+    rememberPageView({
+      colors: colors.map((color) => color.hex),
+      name: paletteName,
+      dot: selected,
+      pair: active ? { fg: active.fgKey, bg: active.bgKey } : undefined,
+    });
+  }, [colors, paletteName, selected, active]);
+
+  useEffect(() => {
+    const nodes = PAGE_SECTIONS.map((id) => document.getElementById(id)).filter((node): node is HTMLElement => Boolean(node));
+    if (!nodes.length) return;
+    let armed = !readPageView().section;
+    function arm() {
+      armed = true;
+    }
+    window.addEventListener("scroll", arm, { once: true, passive: true });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!armed) return;
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) rememberPageView({ section: visible.target.id as (typeof PAGE_SECTIONS)[number] });
+      },
+      { rootMargin: "-12% 0px -55% 0px", threshold: [0.15, 0.4] },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => {
+      window.removeEventListener("scroll", arm);
+      observer.disconnect();
+    };
+  }, []);
 
   const snapshot = useMemo(
     () =>
@@ -129,6 +161,11 @@ export function Workspace() {
     pairs.find((pair) => pair.view === "brand" && pair.required && !pair.exempt && pair.aaNormal && pair.nonText) ??
     pairs.find((pair) => pair.required) ??
     pairs[0];
+  const firstPair =
+    pairs.find((pair) => pair.view === "brand" && pair.required && !pair.exempt && pair.aaNormal && pair.nonText) ??
+    pairs.find((pair) => pair.view === "brand" && pair.required);
+  const firstRating = firstPair ? (firstPair.exempt ? "Exempt" : pairWord(firstPair)) : "—";
+  const firstRatio = firstPair ? `${formatRatio(firstPair.ratio)}:1` : "—";
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +227,7 @@ export function Workspace() {
           favorites: current.favorites.length ? current.favorites : seeded.favorites,
           projects: current.projects.length ? current.projects : seeded.projects,
           matrices: current.matrices.length ? current.matrices : seeded.matrices,
+          templates: current.templates.length ? current.templates : seeded.templates,
         };
       });
       setLibraryReady(true);
@@ -399,10 +437,6 @@ export function Workspace() {
     recordHistory(next);
   }
 
-  function toggleTheme() {
-    writeTheme(theme === "dark" ? "light" : "dark");
-  }
-
   const databaseLabel =
     serverState === "verified"
       ? "Ratios verified in Postgres."
@@ -412,36 +446,7 @@ export function Workspace() {
 
   return (
     <>
-      <header className="app-header">
-        <a className="brand-mark" href="#workspace">
-          <span className="brand-kicker">WCAG 2.2</span>
-          <span>Accessible Palette</span>
-        </a>
-        <div className="header-actions">
-          <button type="button" className="button button-ghost" aria-pressed={theme === "dark"} onClick={toggleTheme}>
-            {theme === "dark" ? "Switch to light" : "Switch to dark"}
-          </button>
-          {session?.user ? (
-            <>
-              <span>{session.user.name || session.user.email}</span>
-              <button type="button" className="button button-ghost" onClick={() => signOut({ callbackUrl: "/" })}>
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                if (session?.authConfigured) void signIn("google", { callbackUrl: "/" });
-                else router.push("/setup");
-              }}
-            >
-              Sign in
-            </button>
-          )}
-        </div>
-      </header>
+      <SiteHeader projects={library.projects} brandHref="#workspace" />
       <main id="workspace" className="shell">
         <p className="sr-only" aria-live="polite">
           {status}
@@ -562,18 +567,41 @@ export function Workspace() {
                 ]}
                 onSelect={applyPreset}
               />
-              {notes.length ? (
-                <ul className="note-list">
-                  {notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="fine-print">
-                  With this on, the dot you are editing stays fixed. The other dots move in lightness
-                  first. Hue moves only when two colors would otherwise become the same.
+              <div className="pair-check">
+                <a
+                  className="pair-check-link"
+                  href="#required-checks"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (firstPair) setActive({ view: firstPair.view, fgKey: firstPair.fgKey, bgKey: firstPair.bgKey });
+                    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                    document.getElementById("required-checks")?.scrollIntoView({
+                      behavior: reduce ? "auto" : "smooth",
+                      block: "start",
+                    });
+                  }}
+                >
+                  First Pair Check:
+                </a>
+                <p className="pair-check-line">
+                  <a className="info-link" href="/about#level-a-aa-and-aaa">
+                    <InfoIcon />
+                    <span className="sr-only">How levels A, AA, and AAA work</span>
+                  </a>
+                  <span>
+                    Rating: <strong>{firstRating}</strong>
+                  </span>
                 </p>
-              )}
+                <p className="pair-check-line">
+                  <a className="info-link" href="/about#contrast-ratio">
+                    <InfoIcon />
+                    <span className="sr-only">How the contrast ratio is calculated</span>
+                  </a>
+                  <span>
+                    Ratio: <strong className="mono">{firstRatio}</strong>
+                  </span>
+                </p>
+              </div>
             </div>
             <div className="panel panel-start">
               <h2>Color</h2>
@@ -629,7 +657,16 @@ export function Workspace() {
               on a light page and use a lighter step on a dark page.
             </p>
           </div>
-          <Preview light={snapshot.light.tokens} dark={snapshot.dark.tokens} />
+          <Preview
+            light={snapshot.light.tokens}
+            dark={snapshot.dark.tokens}
+            colors={colors.map((color) => color.hex)}
+            paletteName={paletteName}
+            library={library}
+            localOnly={sessionReady && !session?.user}
+            onLibrary={acceptLibrary}
+            onSaved={(place) => setToast({ id: Date.now(), place })}
+          />
         </section>
 
         <section className="section" aria-labelledby="cvd-heading">
@@ -660,7 +697,7 @@ export function Workspace() {
       {toast ? (
         <div className="save-toast" role="status">
           <p>
-            {toast.place.kind === "matrix" ? "Brand contrast matrix" : "Palette"} saved to{" "}
+            {toast.place.kind === "matrix" ? "Brand contrast matrix" : toast.place.kind === "template" ? "Template" : "Palette"} saved to{" "}
             <a href={toast.place.href}>{toast.place.name}</a>.
           </p>
           <button type="button" className="save-toast-dismiss" onClick={() => setToast(null)}>

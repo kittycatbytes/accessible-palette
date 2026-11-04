@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
   title: "Set up accounts · Accessible Palette",
@@ -7,6 +8,8 @@ export const metadata: Metadata = {
 
 export default function SetupPage() {
   return (
+    <>
+    <SiteHeader />
     <main className="setup">
       <p>
         <Link href="/">Back to the palette</Link>
@@ -78,5 +81,6 @@ export default function SetupPage() {
         The database stays on Neon.
       </p>
     </main>
+    </>
   );
 }

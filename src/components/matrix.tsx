@@ -118,7 +118,7 @@ export function Matrix({
         </label>
       </div>
       <Reveal signature={`${view}:${hideFailures}:${required.map((pair) => pair.fgKey + pair.bgKey).join("|")}`}>
-      <div className="matrix-scroll" tabIndex={0} aria-label="Required contrast checks">
+      <div id="required-checks" className="matrix-scroll" tabIndex={0} aria-label="Required contrast checks">
         <p className="matrix-caption">Required checks for brand</p>
         <ul className="required-grid matrix-brand">
           {required.map((pair) => {
