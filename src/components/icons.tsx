@@ -51,6 +51,38 @@ export function PencilIcon({ className = "icon" }: IconProps) {
   );
 }
 
+export function CoffeeIcon({ className = "coffee-icon" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 36 36" aria-hidden="true">
+      <g transform="rotate(-22 17 20)">
+        <ellipse cx="15.5" cy="27.2" rx="9.2" ry="2.1" fill="#f2c14e" />
+        <path d="M6.4 12.2h14.6v8.2a4.8 4.8 0 0 1-4.8 4.8h-5a4.8 4.8 0 0 1-4.8-4.8v-8.2z" fill="#ef6f4d" />
+        <path d="M7.6 14.6h12.2" fill="none" stroke="#ffd7a8" strokeWidth="1.5" strokeLinecap="round" />
+        <path
+          d="M8.4 16.6c2.4 1 4.4.2 6.6 1 1.8.6 3.2.2 4.8-.4"
+          fill="none"
+          stroke="#7a3418"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M12.4 20.2c0-.9 1.5-1.4 1.5-.2 0-1.2 1.5-.7 1.5.2 0 1.2-1.5 2.2-1.5 2.2s-1.5-1-1.5-2.2z"
+          fill="#fff6ea"
+        />
+        <path
+          d="M21 14.4h2.3a3.1 3.1 0 0 1 0 6.2H21"
+          fill="none"
+          stroke="#2aa9a1"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+        />
+        <path d="M11.2 9.4c1.1-1.3 1.1-2.1 0-3.2" fill="none" stroke="#f2c14e" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M15.8 8.8c1.1-1.3 1.1-2.1 0-3.2" fill="none" stroke="#7a5cff" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
+    </svg>
+  );
+}
+
 export function InfoIcon({ className = "info-icon" }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 20 20" aria-hidden="true">

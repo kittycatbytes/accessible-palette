@@ -38,7 +38,7 @@ import { ComboHistory } from "./combo-history";
 import { Matrix } from "./matrix";
 import { PaletteStage } from "./palette-stage";
 import { Preview } from "./preview";
-import { SiteHeader, writeTheme } from "./site-header";
+import { writeTheme } from "./site-header";
 
 type SessionInfo = {
   authConfigured: boolean;
@@ -446,7 +446,6 @@ export function Workspace() {
 
   return (
     <>
-      <SiteHeader projects={library.projects} brandHref="#workspace" />
       <main id="workspace" className="shell">
         <p className="sr-only" aria-live="polite">
           {status}

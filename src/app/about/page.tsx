@@ -261,14 +261,18 @@ export default function AboutPage() {
 
         <h2>Policies and regulations that use WCAG</h2>
         <p>
-          These are the major public rules and standards that point at WCAG. Each line opens a Google search for that
+          These are the major public rules and standards that point at WCAG. Lookup opens a Google search for that
           body plus the words WCAG and version, so the link still works when an agency moves the page.
         </p>
         <ul className="policy-list">
           {POLICIES.map((policy) => (
             <li key={policy.name}>
-              <a href={policyHref(policy.name)}>
+              <span>
                 {policy.name}. {policy.note}
+              </span>
+              <a href={policyHref(policy.name)} target="_blank" rel="noopener noreferrer">
+                Lookup
+                <span className="sr-only"> {policy.name} on Google</span>
               </a>
             </li>
           ))}

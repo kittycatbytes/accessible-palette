@@ -153,6 +153,19 @@ a:hover { text-decoration-thickness: 2px; }
 .icon-button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .account-menu, .project-switch { position: relative; }
 .share-button { min-width: 10.75rem; }
+.coffee-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  margin-right: 0.85rem;
+  color: inherit;
+  font-weight: 650;
+  text-underline-offset: 0.16em;
+  white-space: nowrap;
+}
+.coffee-link:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 8px; }
+.coffee-icon { width: 1.7rem; height: 1.7rem; flex: none; }
 .account-panel, .project-switch-panel {
   position: absolute;
   z-index: 8;
@@ -232,6 +245,11 @@ a:hover { text-decoration-thickness: 2px; }
 .shell {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto 4rem;
+}
+.tool-summary {
+  width: min(68ch, calc(100% - 2rem));
+  margin: 1.35rem 0 0 max(1rem, calc((100% - 1120px) / 2));
+  color: var(--muted);
 }
 .page-shell { padding-top: 2.25rem; }
 .project-heading {
@@ -1715,13 +1733,23 @@ input[type="checkbox"] {
 .ratio-field input[type="text"], .ratio-field input.mono { width: 7.5rem; }
 .ratio-readout { font-size: 1.25rem; }
 .grade-list, .policy-list, .rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
-.grade-list li, .policy-list a, .rule-list li {
+.grade-list li, .rule-list li {
   display: flex;
   justify-content: space-between;
   gap: 0.8rem;
   align-items: baseline;
   padding: 0.65rem 0.8rem;
   border-radius: 12px;
+}
+.policy-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
 }
 .grade-pass { background: var(--pass-bg); color: var(--pass-ink); }
 .grade-fail { background: var(--fail-bg); color: var(--fail-ink); }
@@ -1746,14 +1774,12 @@ input[type="checkbox"] {
 .channel-track span { display: block; height: 100%; background: var(--accent); }
 .channel-note { margin: 0; color: var(--muted); font-size: 0.92rem; }
 .policy-list a {
-  display: block;
-  color: inherit;
+  flex: none;
+  font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 0.15em;
-  background: var(--card);
-  border: 1px solid var(--line);
 }
-.policy-list a:hover, .policy-list a:focus-visible { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.policy-list a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
 .rule-list li { display: block; padding: 0.35rem 0 0.55rem; border-top: 1px solid color-mix(in srgb, var(--line) 45%, transparent); }
 .rule-list h3 { font-size: 1.05rem; }
 @media (max-width: 720px) {
