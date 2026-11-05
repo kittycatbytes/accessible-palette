@@ -13,9 +13,65 @@ import {
   readHsb,
   readLab,
   hexToRgb,
+  hslToHex,
+  readHsl,
   rgbToHex,
 } from "@/lib/color";
 import type { PickerMode } from "@/lib/types";
+
+export function HslBars({
+  hex,
+  onChange,
+  onGestureStart,
+  onGestureEnd,
+}: {
+  hex: string;
+  onChange: (hex: string) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
+}) {
+  const hsl = readHsl(hex);
+  return (
+    <div className="picker-bars">
+      <VerticalBar
+        label="Hue"
+        caption="H"
+        valueText={`${hsl.h} degrees`}
+        value={hsl.h}
+        max={360}
+        highAtTop={false}
+        background="linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)"
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+        onChange={(value) => onChange(hslToHex(value, hsl.s, hsl.l))}
+      />
+      <VerticalBar
+        label="Saturation"
+        caption="S"
+        valueText={`${hsl.s} percent`}
+        value={hsl.s}
+        max={100}
+        highAtTop
+        background={`linear-gradient(to bottom, ${hslToHex(hsl.h, 100, hsl.l)}, ${hslToHex(hsl.h, 0, hsl.l)})`}
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+        onChange={(value) => onChange(hslToHex(hsl.h, value, hsl.l))}
+      />
+      <VerticalBar
+        label="Lightness"
+        caption="L"
+        valueText={`${hsl.l} percent`}
+        value={hsl.l}
+        max={100}
+        highAtTop
+        background={`linear-gradient(to bottom, ${hslToHex(hsl.h, hsl.s, 100)}, ${hslToHex(hsl.h, hsl.s, 50)}, ${hslToHex(hsl.h, hsl.s, 0)})`}
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+        onChange={(value) => onChange(hslToHex(hsl.h, hsl.s, value))}
+      />
+    </div>
+  );
+}
 
 export function ColorPicker({
   hex,
@@ -118,6 +174,7 @@ export function ColorPicker({
 
   return (
     <div className="picker">
+      <div className="picker-full">
       <div className="field">
         <label htmlFor="picker-mode">Color picker</label>
         <select
@@ -310,6 +367,93 @@ export function ColorPicker({
             if (next) onChange(next);
           }}
         />
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function VerticalBar({
+  label,
+  caption,
+  valueText,
+  value,
+  max,
+  highAtTop,
+  background,
+  onChange,
+  onGestureStart,
+  onGestureEnd,
+}: {
+  label: string;
+  caption: string;
+  valueText: string;
+  value: number;
+  max: number;
+  highAtTop: boolean;
+  background: string;
+  onChange: (value: number) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const scale = max === 360 ? 359 : max;
+  const fraction = scale === 0 ? 0 : clamp(value, 0, scale) / scale;
+  const top = `${(highAtTop ? 1 - fraction : fraction) * 100}%`;
+
+  function fromEvent(event: React.PointerEvent<HTMLDivElement>) {
+    const element = ref.current;
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const y = rect.height === 0 ? 0 : (event.clientY - rect.top) / rect.height;
+    const next = highAtTop
+      ? Math.round((1 - clamp(y, 0, 1)) * max)
+      : Math.round(clamp(y, 0, 1) * scale);
+    onChange(next);
+  }
+
+  function nudge(event: React.KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? (max > 100 ? 15 : 10) : 1;
+    let next = value;
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") next += highAtTop ? step : -step;
+    else if (event.key === "ArrowDown" || event.key === "ArrowLeft") next += highAtTop ? -step : step;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = scale;
+    else return;
+    event.preventDefault();
+    onGestureStart();
+    const wrapped = max === 360 ? ((next % 360) + 360) % 360 : clamp(next, 0, max);
+    onChange(wrapped);
+  }
+
+  return (
+    <div className="hsl-bar">
+      <span className="hsl-bar-name">{caption}</span>
+      <div
+        ref={ref}
+        className="hsl-bar-hit"
+        role="slider"
+        tabIndex={0}
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={max === 360 ? 359 : max}
+        aria-valuenow={Math.round(value) % (max === 360 ? 360 : max + 1)}
+        aria-valuetext={valueText}
+        onPointerDown={(event) => {
+          onGestureStart();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          fromEvent(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) fromEvent(event);
+        }}
+        onPointerUp={onGestureEnd}
+        onKeyDown={nudge}
+        onKeyUp={onGestureEnd}
+        onBlur={onGestureEnd}
+      >
+        <span className="hsl-bar-track" style={{ background }} />
+        <span className="hsl-bar-thumb" style={{ top }} />
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { EMPTY_LIBRARY, LIBRARY_STORAGE_KEY, parseLibrary, recentProjects, type PaletteLibrary } from "@/lib/library";
 import { flushPageView, rememberPageView } from "@/lib/page-view";
-import { CoffeeIcon, MenuIcon } from "./icons";
+import { CheckIcon, CoffeeIcon, ContrastIcon, DollarIcon, MenuIcon, ShareIcon } from "./icons";
 
 export type SessionInfo = {
   authConfigured: boolean;
@@ -169,8 +169,11 @@ export function SiteHeader({
       </a>
       <div className="header-actions">
         <a className="coffee-link" href="https://buymeacoffee.com/kittycatbytes" target="_blank" rel="noopener noreferrer">
-          Buy me a coffee!
-          <CoffeeIcon />
+          <span className="coffee-label">Buy me a coffee!</span>
+          <span className="coffee-mark">
+            <CoffeeIcon />
+            <DollarIcon />
+          </span>
         </a>
         <button
           type="button"
@@ -178,15 +181,17 @@ export function SiteHeader({
           aria-live="polite"
           onClick={() => void sharePage()}
         >
-          {copied ? "Link copied!" : "Share this page"}
+          <span className="header-label">{copied ? "Link copied!" : "Share this page"}</span>
+          {copied ? <CheckIcon className="header-glyph" /> : <ShareIcon className="header-glyph" />}
         </button>
         <button
           type="button"
-          className="button button-ghost"
+          className="button button-ghost theme-button"
           aria-pressed={theme === "dark"}
           onClick={() => writeTheme(theme === "dark" ? "light" : "dark")}
         >
-          {theme === "dark" ? "Switch to light" : "Switch to dark"}
+          <span className="header-label">{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
+          <ContrastIcon className="header-glyph" />
         </button>
         <Suspense fallback={<MenuFallback />}>
           <AccountMenu

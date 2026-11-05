@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatRatio, oklchToHex, pairWord, readOklch } from "@/lib/color";
 import {
   EMPTY_LIBRARY,
@@ -29,7 +29,7 @@ import {
 import { PAGE_SECTIONS, readPageView, rememberPageView } from "@/lib/page-view";
 import { buildSnapshot, listPairs } from "@/lib/snapshot";
 import type { BrandColor, ContrastPair, Harmony, PickerMode } from "@/lib/types";
-import { ColorPicker } from "./color-picker";
+import { ColorPicker, HslBars } from "./color-picker";
 import { InfoIcon } from "./icons";
 import { CvdPanel } from "./cvd-panel";
 import { ExportPanel } from "./export-panel";
@@ -45,6 +45,71 @@ type SessionInfo = {
   database: string;
   user: { id: string; name: string; email: string } | null;
 };
+
+const HARMONY_OPTIONS: { value: Harmony; label: string }[] = [
+  { value: "complementary", label: "Complementary" },
+  { value: "analogous", label: "Analogous" },
+  { value: "triadic", label: "Triadic" },
+  { value: "split-complementary", label: "Split complementary" },
+  { value: "tetradic", label: "Tetradic" },
+  { value: "monochromatic", label: "Monochromatic" },
+];
+
+function MenuCaret() {
+  return (
+    <svg className="build-caret" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.5 9.5 12 15l5.5-5.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FoldSection({
+  id,
+  title,
+  subtitle,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="panel fold-panel" aria-labelledby={id}>
+      <div className="section-head section-fold">
+        <h2 id={id}>
+          <button
+            type="button"
+            className="section-fold-toggle"
+            aria-expanded={open}
+            aria-controls={`${id}-panel`}
+            onClick={onToggle}
+          >
+            <span className="section-fold-copy">
+              <span className="section-fold-title">{title}</span>
+              <span className="section-fold-sub">{subtitle}</span>
+            </span>
+            <svg className={open ? "chevron chevron-up" : "chevron"} viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 9.5 12 15.5 18 9.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </h2>
+      </div>
+      {open ? <div id={`${id}-panel`}>{children}</div> : null}
+    </section>
+  );
+}
 
 function renumber(colors: BrandColor[]): BrandColor[] {
   return colors.map((color, index) => ({
@@ -65,6 +130,13 @@ export function Workspace() {
   const [pickerMode, setPickerMode] = useState<PickerMode>("cube");
   const [harmony, setHarmony] = useState<Harmony>("analogous");
   const [liveWheel, setLiveWheel] = useState(false);
+  const [colorsOpen, setColorsOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [harmonyOpen, setHarmonyOpen] = useState(false);
+  const [harmonyAbove, setHarmonyAbove] = useState(false);
+  const harmonyMenuRef = useRef<HTMLDivElement>(null);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [spin, setSpin] = useState(0);
   const [notes, setNotes] = useState<string[]>([]);
   const [status, setStatus] = useState("Harbor is loaded. Choose a dot, then set its color.");
@@ -84,10 +156,38 @@ export function Workspace() {
   const colorsRef = useRef(colors);
   const spareRef = useRef<BrandColor[]>([]);
   const gesture = useRef(false);
+  const gestureKind = useRef<"color" | "count" | null>(null);
+  const gestureHex = useRef<string | null>(null);
   const touched = useRef(false);
   const [past, setPast] = useState<BrandColor[][]>([]);
   const [future, setFuture] = useState<BrandColor[][]>([]);
   colorsRef.current = colors;
+
+  useEffect(() => {
+    if (!harmonyOpen) return;
+    function onPointer(event: PointerEvent) {
+      if (!harmonyMenuRef.current?.contains(event.target as Node)) setHarmonyOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setHarmonyOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [harmonyOpen]);
+
+  useLayoutEffect(() => {
+    if (!harmonyOpen || !harmonyMenuRef.current) return;
+    const button = harmonyMenuRef.current.getBoundingClientRect();
+    const list = harmonyMenuRef.current.querySelector(".build-harmony-list");
+    const listHeight = list?.getBoundingClientRect().height ?? 0;
+    const spaceBelow = window.innerHeight - button.bottom;
+    const spaceAbove = button.top;
+    setHarmonyAbove(spaceBelow < listHeight + 8 && spaceAbove > spaceBelow);
+  }, [harmonyOpen]);
 
   useLayoutEffect(() => {
     const view = readPageView();
@@ -104,6 +204,8 @@ export function Workspace() {
     }
     if (view.pair) setActive({ view: "brand", fgKey: view.pair.fg, bgKey: view.pair.bg });
     if (view.theme) writeTheme(view.theme);
+    if (view.section === "check-heading" || window.location.hash === "#required-checks") setCheckOpen(true);
+    if (view.section === "preview-heading") setPreviewOpen(true);
   }, []);
 
   useEffect(() => {
@@ -318,9 +420,26 @@ export function Workspace() {
     setLibrary((current) => pushHistory(current, next.map((color) => color.hex), name));
   }
 
+  function settlePalette(source: BrandColor[]) {
+    const anchor = Math.min(selected, source.length - 1);
+    const arranged = fromHexes(paletteFromHarmony(source.map((color) => color.hex), anchor, harmony));
+    return autoOptimize ? optimizeBrand(arranged, anchor) : { colors: arranged, notes: [] };
+  }
+
   function finishGesture() {
     if (!gesture.current) return;
+    const kind = gestureKind.current;
+    const started = gestureHex.current;
+    const anchor = Math.min(selected, colorsRef.current.length - 1);
+    const ended = colorsRef.current[anchor]?.hex ?? null;
+    if (kind === "color" && !liveWheel && started && ended && started !== ended) {
+      const result = settlePalette(colorsRef.current);
+      setNotes(result.notes);
+      commit(result.colors, "edit");
+    }
     gesture.current = false;
+    gestureKind.current = null;
+    gestureHex.current = null;
     recordHistory(colorsRef.current);
   }
 
@@ -346,10 +465,13 @@ export function Workspace() {
     const seeded = current.map((color, index) =>
       index === anchor ? { ...color, hex } : color,
     );
-    const arranged = liveWheel
-      ? fromHexes(paletteFromHarmony(seeded.map((color) => color.hex), anchor, harmony))
-      : seeded;
-    const result = autoOptimize ? optimizeBrand(arranged, anchor) : { colors: arranged, notes: [] };
+    // Live update rebuilds the other dots while the pointer moves. Otherwise
+    // only the selected dot follows the drag, and the rest update on release.
+    if (!liveWheel && gesture.current && gestureKind.current === "color") {
+      commit(seeded, "edit");
+      return;
+    }
+    const result = settlePalette(seeded);
     setNotes(result.notes);
     commit(result.colors, "edit");
   }
@@ -437,6 +559,133 @@ export function Workspace() {
     recordHistory(next);
   }
 
+  function beginColorGesture() {
+    touched.current = true;
+    if (gesture.current) return;
+    gesture.current = true;
+    gestureKind.current = "color";
+    const anchor = Math.min(selected, colorsRef.current.length - 1);
+    gestureHex.current = colorsRef.current[anchor]?.hex ?? null;
+    remember();
+  }
+
+  function colorCountField(id: string) {
+    return (
+      <div className="field" id={`${id}-panel`}>
+        <label htmlFor={id}>Colors in the palette</label>
+        <div className="count-slider">
+          <input
+            id={id}
+            className="slider"
+            type="range"
+            min={3}
+            max={5}
+            step={1}
+            value={colors.length}
+            aria-valuetext={`${colors.length} colors`}
+            onPointerDown={() => {
+              touched.current = true;
+              if (gesture.current) return;
+              gesture.current = true;
+              gestureKind.current = "count";
+              remember();
+            }}
+            onPointerUp={finishGesture}
+            onChange={(event) => changeCount(Number(event.target.value))}
+          />
+          <span
+            className="count-tip"
+            aria-hidden="true"
+            style={{ left: `calc(${(colors.length - 3) / 2} * (100% - var(--count-thumb)) + var(--count-thumb) / 2)` }}
+          >
+            {colors.length}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function chooseHarmony(nextHarmony: Harmony) {
+    setHarmony(nextHarmony);
+    applyHarmony(nextHarmony);
+    setHarmonyOpen(false);
+  }
+
+  function harmonyField(id: string, compact: boolean) {
+    if (!compact) {
+      return (
+        <div className="field">
+          <label htmlFor={id}>Harmony for auto palette</label>
+          <select id={id} value={harmony} onChange={(event) => chooseHarmony(event.target.value as Harmony)}>
+            {HARMONY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    return (
+      <div
+        className={harmonyOpen ? "build-menu build-harmony is-open" : "build-menu build-harmony"}
+        ref={harmonyMenuRef}
+      >
+        <button
+          type="button"
+          className="build-menu-hit"
+          aria-haspopup="listbox"
+          aria-expanded={harmonyOpen}
+          aria-controls="harmony-mobile-list"
+          onClick={() => setHarmonyOpen((open) => !open)}
+        >
+          <span>Harmony</span>
+          <MenuCaret />
+        </button>
+        {harmonyOpen ? (
+          <ul
+            id="harmony-mobile-list"
+            role="listbox"
+            aria-label="Harmony"
+            className={harmonyAbove ? "build-harmony-list is-above" : "build-harmony-list"}
+          >
+            {HARMONY_OPTIONS.map((option) => (
+              <li key={option.value} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  className="build-harmony-option"
+                  aria-selected={harmony === option.value}
+                  onClick={() => chooseHarmony(option.value)}
+                >
+                  {option.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
+
+  function templateRail() {
+    return (
+      <CategoryRail
+        groups={[
+          { label: "Most popular", presets: POPULAR_PRESETS },
+          { label: "Contemporary", presets: CONTEMPORARY_PRESETS },
+          { label: "Classic", presets: CLASSIC_PRESETS },
+          { label: "Light", presets: LIGHT_PRESETS },
+          { label: "Vibrant", presets: VIBRANT_PRESETS },
+          { label: "Monochromatic", presets: MONOCHROMATIC_PRESETS },
+          { label: "Pastel", presets: PASTEL_PRESETS },
+          { label: "High contrast", presets: CONTRAST_PRESETS },
+        ]}
+        onSelect={applyPreset}
+      />
+    );
+  }
+
   const databaseLabel =
     serverState === "verified"
       ? "Ratios verified in Postgres."
@@ -477,46 +726,34 @@ export function Workspace() {
                 onLibrary={acceptLibrary}
                 onSaved={(place) => setToast({ id: Date.now(), place })}
               />
-              <PaletteStage
-                colors={colors}
-                selected={selected}
-                spin={spin}
-                smoothColors={liveWheel}
-                canUndo={past.length > 0}
-                canRedo={future.length > 0}
-                onUndo={undo}
-                onRedo={redo}
-                onShuffle={generate}
-                onSelect={setSelected}
-              />
-              <div className="field">
-                <label htmlFor="color-count">Colors in the palette</label>
-                <div className="count-slider">
-                  <input
-                    id="color-count"
-                    className="slider"
-                    type="range"
-                    min={3}
-                    max={5}
-                    step={1}
-                    value={colors.length}
-                    aria-valuetext={`${colors.length} colors`}
-                    onPointerDown={() => {
-                      touched.current = true;
-                      if (gesture.current) return;
-                      gesture.current = true;
-                      remember();
-                    }}
-                    onPointerUp={finishGesture}
-                    onChange={(event) => changeCount(Number(event.target.value))}
+              <div className="stage-row">
+                <PaletteStage
+                  colors={colors}
+                  selected={selected}
+                  spin={spin}
+                  smoothColors={liveWheel}
+                  canUndo={past.length > 0}
+                  canRedo={future.length > 0}
+                  onUndo={undo}
+                  onRedo={redo}
+                  onShuffle={generate}
+                  onSelect={setSelected}
+                />
+                <div className="stage-bars">
+                  <HslBars
+                    hex={colors[selected]?.hex ?? "#0c3d66"}
+                    onGestureStart={beginColorGesture}
+                    onGestureEnd={finishGesture}
+                    onChange={updateHex}
                   />
-                  <span
-                    className="count-tip"
-                    aria-hidden="true"
-                    style={{ left: `calc(${(colors.length - 3) / 2} * (100% - var(--count-thumb)) + var(--count-thumb) / 2)` }}
-                  >
-                    {colors.length}
-                  </span>
+                  <label className="check live-update">
+                    <input
+                      type="checkbox"
+                      checked={liveWheel}
+                      onChange={(event) => setLiveWheel(event.target.checked)}
+                    />
+                    <span>Live update</span>
+                  </label>
                 </div>
               </div>
               <label className="check">
@@ -534,38 +771,38 @@ export function Workspace() {
                 />
                 <span>Auto-optimize WCAG</span>
               </label>
-              <div className="field">
-                <label htmlFor="harmony">Harmony for auto palette</label>
-                <select
-                  id="harmony"
-                  value={harmony}
-                  onChange={(event) => {
-                    const nextHarmony = event.target.value as Harmony;
-                    setHarmony(nextHarmony);
-                    applyHarmony(nextHarmony);
-                  }}
-                >
-                  <option value="complementary">Complementary</option>
-                  <option value="analogous">Analogous</option>
-                  <option value="triadic">Triadic</option>
-                  <option value="split-complementary">Split complementary</option>
-                  <option value="tetradic">Tetradic</option>
-                  <option value="monochromatic">Monochromatic</option>
-                </select>
+              <div className="build-desktop">
+                {colorCountField("color-count")}
+                {harmonyField("harmony", false)}
+                {templateRail()}
               </div>
-              <CategoryRail
-                groups={[
-                  { label: "Most popular", presets: POPULAR_PRESETS },
-                  { label: "Contemporary", presets: CONTEMPORARY_PRESETS },
-                  { label: "Classic", presets: CLASSIC_PRESETS },
-                  { label: "Light", presets: LIGHT_PRESETS },
-                  { label: "Vibrant", presets: VIBRANT_PRESETS },
-                  { label: "Monochromatic", presets: MONOCHROMATIC_PRESETS },
-                  { label: "Pastel", presets: PASTEL_PRESETS },
-                  { label: "High contrast", presets: CONTRAST_PRESETS },
-                ]}
-                onSelect={applyPreset}
-              />
+              <div className="build-mobile">
+                <div className="build-row">
+                  <button
+                    type="button"
+                    className={colorsOpen ? "build-menu is-open" : "build-menu"}
+                    aria-expanded={colorsOpen}
+                    aria-controls="color-count-mobile-panel"
+                    onClick={() => setColorsOpen((open) => !open)}
+                  >
+                    <span>Colors</span>
+                    <MenuCaret />
+                  </button>
+                  {harmonyField("harmony-mobile", true)}
+                  <button
+                    type="button"
+                    className={templatesOpen ? "build-menu is-open" : "build-menu"}
+                    aria-expanded={templatesOpen}
+                    aria-controls="template-panel"
+                    onClick={() => setTemplatesOpen((open) => !open)}
+                  >
+                    <span>Template</span>
+                    <MenuCaret />
+                  </button>
+                </div>
+                {colorsOpen ? colorCountField("color-count-mobile") : null}
+                {templatesOpen ? <div id="template-panel">{templateRail()}</div> : null}
+              </div>
               <div className="pair-check">
                 <a
                   className="pair-check-link"
@@ -573,10 +810,13 @@ export function Workspace() {
                   onClick={(event) => {
                     event.preventDefault();
                     if (firstPair) setActive({ view: firstPair.view, fgKey: firstPair.fgKey, bgKey: firstPair.bgKey });
+                    setCheckOpen(true);
                     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                    document.getElementById("required-checks")?.scrollIntoView({
-                      behavior: reduce ? "auto" : "smooth",
-                      block: "start",
+                    window.requestAnimationFrame(() => {
+                      document.getElementById("required-checks")?.scrollIntoView({
+                        behavior: reduce ? "auto" : "smooth",
+                        block: "start",
+                      });
                     });
                   }}
                 >
@@ -608,12 +848,7 @@ export function Workspace() {
                 hex={colors[selected]?.hex ?? "#0c3d66"}
                 mode={pickerMode}
                 onMode={setPickerMode}
-                onGestureStart={() => {
-                  touched.current = true;
-                  if (gesture.current) return;
-                  gesture.current = true;
-                  remember();
-                }}
+                onGestureStart={beginColorGesture}
                 onGestureEnd={finishGesture}
                 onChange={updateHex}
               />
@@ -623,19 +858,24 @@ export function Workspace() {
                   checked={liveWheel}
                   onChange={(event) => setLiveWheel(event.target.checked)}
                 />
-                <span>Live update palette wheel</span>
+                <span>Live update</span>
               </label>
             </div>
           </div>
         </section>
 
-        <section className="section" aria-labelledby="check-heading">
-          <div className="section-head">
-            <h2 id="check-heading">Check a pair</h2>
-            <p>
+        <div className="fold-stack">
+        <FoldSection
+          id="check-heading"
+          title="Check a pair"
+          subtitle={
+            <>
               Choose a cell in the matrix to put that pair in the badges. {databaseLabel}
-            </p>
-          </div>
+            </>
+          }
+          open={checkOpen}
+          onToggle={() => setCheckOpen((open) => !open)}
+        >
           <Matrix
             snapshot={snapshot}
             pairs={pairs}
@@ -646,16 +886,15 @@ export function Workspace() {
             onLibrary={acceptLibrary}
             onSaved={(place) => setToast({ id: Date.now(), place })}
           />
-        </section>
+        </FoldSection>
 
-        <section className="section" aria-labelledby="preview-heading">
-          <div className="section-head">
-            <h2 id="preview-heading">Preview</h2>
-            <p>
-              Light and dark pages use steps derived from the dots. A dark brand color can stay dark
-              on a light page and use a lighter step on a dark page.
-            </p>
-          </div>
+        <FoldSection
+          id="preview-heading"
+          title="Preview as Site Template"
+          subtitle="Preview this color palette as a mock website (Basic, E-Commerce, or Dashboard)."
+          open={previewOpen}
+          onToggle={() => setPreviewOpen((open) => !open)}
+        >
           <Preview
             light={snapshot.light.tokens}
             dark={snapshot.dark.tokens}
@@ -666,7 +905,8 @@ export function Workspace() {
             onLibrary={acceptLibrary}
             onSaved={(place) => setToast({ id: Date.now(), place })}
           />
-        </section>
+        </FoldSection>
+        </div>
 
         <section className="section" aria-labelledby="cvd-heading">
           <div className="section-head">

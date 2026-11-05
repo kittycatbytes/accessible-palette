@@ -160,6 +160,21 @@ export function hueFromStrip(y: number): number {
   return Math.round(clamp(y, 0, 1) * 359);
 }
 
+export function hslToHex(h: number, s: number, l: number): string {
+  const color = toRgb({
+    mode: "hsl",
+    h: clamp(h, 0, 360) % 360,
+    s: clamp(s, 0, 100) / 100,
+    l: clamp(l, 0, 100) / 100,
+  });
+  if (!color) return "#000000";
+  return rgbToHex({
+    r: (color.r ?? 0) * 255,
+    g: (color.g ?? 0) * 255,
+    b: (color.b ?? 0) * 255,
+  });
+}
+
 export function hsbToHex(h: number, s: number, b: number): string {
   const color = toRgb({
     mode: "hsv",
