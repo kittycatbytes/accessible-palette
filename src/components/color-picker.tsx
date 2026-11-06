@@ -217,11 +217,11 @@ export function ColorPicker({
             }}
             onPointerDown={(event) => {
               onGestureStart();
-              event.currentTarget.setPointerCapture(event.pointerId);
+              capturePointer(event.currentTarget, event.pointerId);
               moveField(event);
             }}
             onPointerMove={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) moveField(event);
+              if (holdsPointer(event.currentTarget, event.pointerId)) moveField(event);
             }}
             onPointerUp={onGestureEnd}
             onKeyDown={nudgeField}
@@ -245,11 +245,11 @@ export function ColorPicker({
             aria-valuetext={`${Math.round(hsb.h) % 360} degrees`}
             onPointerDown={(event) => {
               onGestureStart();
-              event.currentTarget.setPointerCapture(event.pointerId);
+              capturePointer(event.currentTarget, event.pointerId);
               moveHue(event);
             }}
             onPointerMove={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) moveHue(event);
+              if (holdsPointer(event.currentTarget, event.pointerId)) moveHue(event);
             }}
             onPointerUp={onGestureEnd}
             onKeyDown={nudgeHue}
@@ -271,11 +271,11 @@ export function ColorPicker({
           aria-hidden="true"
           onPointerDown={(event) => {
             onGestureStart();
-            event.currentTarget.setPointerCapture(event.pointerId);
+            capturePointer(event.currentTarget, event.pointerId);
             moveWheel(event);
           }}
           onPointerMove={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) moveWheel(event);
+            if (holdsPointer(event.currentTarget, event.pointerId)) moveWheel(event);
           }}
           onPointerUp={onGestureEnd}
         >
@@ -373,6 +373,22 @@ export function ColorPicker({
   );
 }
 
+function capturePointer(element: HTMLElement, pointerId: number) {
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // A touch that runs off the bar is no longer an active pointer.
+  }
+}
+
+function holdsPointer(element: HTMLElement, pointerId: number) {
+  try {
+    return element.hasPointerCapture(pointerId);
+  } catch {
+    return false;
+  }
+}
+
 function VerticalBar({
   label,
   caption,
@@ -440,14 +456,16 @@ function VerticalBar({
         aria-valuenow={Math.round(value) % (max === 360 ? 360 : max + 1)}
         aria-valuetext={valueText}
         onPointerDown={(event) => {
+          if (event.pointerType === "touch" && event.cancelable) event.preventDefault();
           onGestureStart();
-          event.currentTarget.setPointerCapture(event.pointerId);
+          capturePointer(event.currentTarget, event.pointerId);
           fromEvent(event);
         }}
         onPointerMove={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) fromEvent(event);
+          if (holdsPointer(event.currentTarget, event.pointerId)) fromEvent(event);
         }}
         onPointerUp={onGestureEnd}
+        onPointerCancel={onGestureEnd}
         onKeyDown={nudge}
         onKeyUp={onGestureEnd}
         onBlur={onGestureEnd}

@@ -71,7 +71,12 @@ export function serializeShareSearch(view: PageView): string {
 
 let pending: PageView = {};
 let frame = 0;
+let trailing = 0;
 let seeded = false;
+let lastWrite = 0;
+// Safari and Chrome on a phone refuse history.replaceState after about 100 calls
+// in a short window, then replace the page with one that asks for a reload.
+const MIN_WRITE_GAP_MS = 500;
 
 function writeShare() {
   if (typeof window === "undefined" || window.location.pathname !== "/") return;
@@ -83,24 +88,43 @@ function writeShare() {
   const hash = pending.section ? `#${pending.section}` : window.location.hash;
   const next = `/${query}${hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (current !== next) history.replaceState(null, "", next);
+  try {
+    if (current !== next) history.replaceState(null, "", next);
+  } catch {
+    // The browser rejected another address update. The latest view stays in `pending`.
+  }
+  lastWrite = Date.now();
+}
+
+function scheduleWrite() {
+  if (frame || trailing) return;
+  const wait = MIN_WRITE_GAP_MS - (Date.now() - lastWrite);
+  if (wait <= 0) {
+    frame = window.requestAnimationFrame(() => {
+      frame = 0;
+      writeShare();
+    });
+    return;
+  }
+  trailing = window.setTimeout(() => {
+    trailing = 0;
+    writeShare();
+  }, wait);
 }
 
 /** Merge the visible palette into the address bar. One static page serves every combination. */
 export function rememberPageView(partial: PageView) {
   if (typeof window === "undefined" || window.location.pathname !== "/") return;
   pending = { ...pending, ...partial };
-  if (frame) return;
-  frame = window.requestAnimationFrame(() => {
-    frame = 0;
-    writeShare();
-  });
+  scheduleWrite();
 }
 
 export function flushPageView() {
   if (typeof window === "undefined") return;
   if (frame) window.cancelAnimationFrame(frame);
+  if (trailing) window.clearTimeout(trailing);
   frame = 0;
+  trailing = 0;
   writeShare();
 }
 

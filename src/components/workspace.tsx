@@ -26,7 +26,7 @@ import {
   presetBias,
   type PalettePreset,
 } from "@/lib/presets";
-import { PAGE_SECTIONS, readPageView, rememberPageView } from "@/lib/page-view";
+import { flushPageView, PAGE_SECTIONS, readPageView, rememberPageView } from "@/lib/page-view";
 import { buildSnapshot, listPairs } from "@/lib/snapshot";
 import type { BrandColor, ContrastPair, Harmony, PickerMode } from "@/lib/types";
 import { ColorPicker, HslBars } from "./color-picker";
@@ -209,6 +209,7 @@ export function Workspace() {
   }, []);
 
   useEffect(() => {
+    if (gesture.current) return;
     rememberPageView({
       colors: colors.map((color) => color.hex),
       name: paletteName,
@@ -441,6 +442,13 @@ export function Workspace() {
     gestureKind.current = null;
     gestureHex.current = null;
     recordHistory(colorsRef.current);
+    rememberPageView({
+      colors: colorsRef.current.map((color) => color.hex),
+      name: paletteName,
+      dot: selected,
+      pair: active ? { fg: active.fgKey, bg: active.bgKey } : undefined,
+    });
+    flushPageView();
   }
 
   function commit(
